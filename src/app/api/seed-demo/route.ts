@@ -739,10 +739,13 @@ export async function GET() {
     }
 
     // ============================================================
-    // Done! Redirect to the trip page
+    // Done! Return trip data for client-side navigation
     // ============================================================
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    return NextResponse.redirect(`${appUrl}/trip/${tripId}`);
+    return NextResponse.json({
+      success: true,
+      trip_id: tripId,
+      redirect: `/trip/${tripId}`,
+    });
   } catch (error) {
     console.error("Seed error:", error);
     return NextResponse.json(

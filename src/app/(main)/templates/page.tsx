@@ -22,6 +22,11 @@ import {
   Plus,
   Plane,
   ArrowLeft,
+  Loader2,
+  Star,
+  Users,
+  MessageSquare,
+  ThumbsUp,
 } from "lucide-react";
 import { parseISO, differenceInDays } from "date-fns";
 import Link from "next/link";
@@ -31,6 +36,8 @@ export default function TemplatesPage() {
   const router = useRouter();
   const [templates, setTemplates] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
+  const [demoLoading, setDemoLoading] = useState(false);
+  const [demoError, setDemoError] = useState<string | null>(null);
 
   const supabase = createClient();
 
@@ -91,6 +98,24 @@ export default function TemplatesPage() {
     }
   };
 
+  const handleLaunchDemo = async () => {
+    setDemoLoading(true);
+    setDemoError(null);
+    try {
+      const res = await fetch("/api/seed-demo");
+      const data = await res.json();
+      if (!res.ok) {
+        setDemoError(data.error || "Failed to create demo trip");
+        return;
+      }
+      router.push(data.redirect);
+    } catch {
+      setDemoError("Failed to create demo trip. Check your Supabase connection.");
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-muted/30">
       <Header />
@@ -118,9 +143,104 @@ export default function TemplatesPage() {
           </Link>
         </div>
 
+        {/* Demonstration Template — always shown */}
+        <div className="mb-8">
+          <h2 className="text-sm font-medium text-muted-foreground mb-3">Featured Demo</h2>
+          <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-background hover:shadow-lg transition-shadow">
+            <CardHeader>
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="default" className="text-xs">
+                      <Star className="h-3 w-3 mr-1" />
+                      Demo
+                    </Badge>
+                  </div>
+                  <CardTitle className="text-xl">Tennessee Adventure 2026</CardTitle>
+                  <CardDescription className="flex items-center gap-1 mt-1">
+                    <MapPin className="h-3 w-3" />
+                    Tennessee, USA
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                See TripSync in action! Three friends (Sarah, Jake &amp; Emily) plan a 3-day
+                Tennessee road trip — Nashville honky tonks, a full day at Dollywood, and a Smoky
+                Mountains hike. Complete with votes, debates, comments, expenses, and a final itinerary.
+              </p>
+
+              <div className="flex flex-wrap gap-2 text-xs">
+                <Badge variant="secondary" className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  3 days
+                </Badge>
+                <Badge variant="secondary" className="flex items-center gap-1">
+                  <DollarSign className="h-3 w-3" />
+                  $3,000 budget
+                </Badge>
+                <Badge variant="secondary" className="flex items-center gap-1">
+                  <Users className="h-3 w-3" />
+                  3 travelers
+                </Badge>
+                <Badge variant="secondary" className="flex items-center gap-1">
+                  <MessageSquare className="h-3 w-3" />
+                  30 comments
+                </Badge>
+                <Badge variant="secondary" className="flex items-center gap-1">
+                  <ThumbsUp className="h-3 w-3" />
+                  30+ votes
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                <div className="bg-muted/50 rounded-md p-2">
+                  <p className="font-medium text-foreground">Day 1 — Nashville</p>
+                  <p>Hot Chicken, Honky Tonks, Airbnb in The Gulch</p>
+                </div>
+                <div className="bg-muted/50 rounded-md p-2">
+                  <p className="font-medium text-foreground">Day 2 — Dollywood</p>
+                  <p>Full day at the park, Old Mill dinner</p>
+                </div>
+                <div className="bg-muted/50 rounded-md p-2">
+                  <p className="font-medium text-foreground">Day 3 — Smokies</p>
+                  <p>Pancake Pantry, Clingmans Dome hike</p>
+                </div>
+              </div>
+
+              {demoError && (
+                <p className="text-sm text-destructive">{demoError}</p>
+              )}
+
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={handleLaunchDemo}
+                disabled={demoLoading}
+              >
+                {demoLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creating Demo Trip...
+                  </>
+                ) : (
+                  <>
+                    <Star className="h-4 w-4 mr-2" />
+                    Launch Demonstration
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Community Templates */}
+        <h2 className="text-sm font-medium text-muted-foreground mb-3">Community Templates</h2>
+
         {loading ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
+            {[1, 2, 3].map((i) => (
               <Card key={i}>
                 <CardHeader>
                   <Skeleton className="h-5 w-3/4" />
@@ -134,18 +254,12 @@ export default function TemplatesPage() {
             ))}
           </div>
         ) : templates.length === 0 ? (
-          <div className="text-center py-16">
-            <Plane className="h-16 w-16 mx-auto mb-4 text-muted-foreground/30" />
-            <h3 className="text-lg font-medium mb-2">No templates yet</h3>
-            <p className="text-muted-foreground mb-4">
-              Be the first to create a trip and share it as a template!
+          <div className="text-center py-12 border border-dashed rounded-lg">
+            <Plane className="h-12 w-12 mx-auto mb-3 text-muted-foreground/30" />
+            <h3 className="text-base font-medium mb-1">No community templates yet</h3>
+            <p className="text-sm text-muted-foreground">
+              Create a trip and share it as a template for others!
             </p>
-            <Link href="/create">
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Create a Trip
-              </Button>
-            </Link>
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
