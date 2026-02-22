@@ -124,7 +124,7 @@ CREATE TABLE votes (
     id                uuid        PRIMARY KEY DEFAULT uuid_generate_v4(),
     card_id           uuid        NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
     participant_id    uuid        NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
-    score             integer     NOT NULL CHECK (score >= 1 AND score <= 3),
+    score             integer     NOT NULL CHECK (score >= 1 AND score <= 5),
     is_anonymous      boolean     DEFAULT false,
     voted_at          timestamptz DEFAULT now(),
 

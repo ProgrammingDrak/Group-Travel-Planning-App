@@ -146,3 +146,10 @@ ALTER PUBLICATION supabase_realtime ADD TABLE commute_options;
 ALTER PUBLICATION supabase_realtime ADD TABLE commute_option_participants;
 ALTER PUBLICATION supabase_realtime ADD TABLE expense_line_items;
 ALTER PUBLICATION supabase_realtime ADD TABLE expense_participants;
+
+-- ==========================================================
+-- 13. Expand vote score range from 1-3 to 1-5 (Rev 4: 5-tier voting)
+-- ==========================================================
+-- Drop the old CHECK constraint and add an updated one
+ALTER TABLE votes DROP CONSTRAINT IF EXISTS votes_score_check;
+ALTER TABLE votes ADD CONSTRAINT votes_score_check CHECK (score >= 1 AND score <= 5);
