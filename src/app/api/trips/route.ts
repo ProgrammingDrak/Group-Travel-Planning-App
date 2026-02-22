@@ -24,27 +24,50 @@ export async function POST(request: NextRequest) {
     }
 
     const { name, destination, start_date, end_date, creator_email, total_budget } = parsed.data;
-    const invite_code = generateInviteCode();
 
     const supabase = createServerSupabaseClient();
 
-    const { data: trip, error: tripError } = await supabase
-      .from("trips")
-      .insert({
-        name,
-        destination,
-        start_date,
-        end_date,
-        creator_email,
-        invite_code,
-        total_budget,
-      })
-      .select()
-      .single();
+    // Retry with new invite code on unique constraint collision
+    let trip = null;
+    let tripError = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const invite_code = generateInviteCode();
+      const { data, error } = await supabase
+        .from("trips")
+        .insert({
+          name,
+          destination,
+          start_date,
+          end_date,
+          creator_email,
+          invite_code,
+          total_budget,
+        })
+        .select()
+        .single();
 
-    if (tripError) {
+      if (!error) {
+        trip = data;
+        tripError = null;
+        break;
+      }
+
+      // If it's a unique constraint violation on invite_code, retry
+      if (error.code === "23505" && error.message.includes("invite_code")) {
+        tripError = error;
+        continue;
+      }
+
+      // Any other error, bail out
       return NextResponse.json(
-        { error: tripError.message },
+        { error: error.message },
+        { status: 500 }
+      );
+    }
+
+    if (!trip) {
+      return NextResponse.json(
+        { error: tripError?.message || "Failed to generate unique invite code" },
         { status: 500 }
       );
     }
