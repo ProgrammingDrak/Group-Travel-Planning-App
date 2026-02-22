@@ -54,7 +54,7 @@ export const updateCardSchema = createCardSchema.partial().omit({ trip_id: true 
 export const createVoteSchema = z.object({
   card_id: z.string().uuid(),
   participant_id: z.string().uuid(),
-  score: z.coerce.number().min(1).max(3),
+  score: z.coerce.number().min(1).max(5),
   is_anonymous: z.boolean().default(false),
 });
 

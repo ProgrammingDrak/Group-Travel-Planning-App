@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { getCardIcon, getCardTypeInfo } from "@/lib/card-icons";
 import {
-  Star,
   MessageSquare,
   Clock,
   MapPin,
@@ -37,6 +36,15 @@ const stageBadgeVariants: Record<CardStage, string> = {
   chosen: "bg-green-100 text-green-800",
   booked: "bg-blue-100 text-blue-800",
 };
+
+// Helper to get vote count for a specific score tier
+// Falls back to 0 if vote_counts not available
+function getVoteCountForScore(card: CardWithVoteStats, score: number): number {
+  if (card.vote_counts) {
+    return card.vote_counts[score] ?? 0;
+  }
+  return 0;
+}
 
 interface CardItemProps {
   card: CardWithVoteStats;
@@ -180,25 +188,22 @@ export function CardItem({
           </div>
         )}
 
-        {/* Stats row */}
-        <div className="flex items-center gap-3 mt-1.5 text-xs">
-          {/* Vote average */}
-          <span className="flex items-center gap-1">
-            <Star
-              className={cn(
-                "h-3.5 w-3.5",
-                card.avg_score && card.avg_score >= 2
-                  ? "text-yellow-500 fill-yellow-500"
-                  : "text-muted-foreground"
-              )}
-            />
-            <span className="font-medium">
-              {card.avg_score ? card.avg_score.toFixed(1) : "—"}
+        {/* Stats row - Rev 4: Show vote tier counts */}
+        <div className="flex items-center gap-2 mt-1.5 text-xs">
+          {card.vote_count > 0 ? (
+            <span className="flex items-center gap-1.5">
+              <span className="text-muted-foreground">Votes:</span>
+              <span>👎{getVoteCountForScore(card, 1)}</span>
+              <span>❌{getVoteCountForScore(card, 2)}</span>
+              <span>➖{getVoteCountForScore(card, 3)}</span>
+              <span>✅{getVoteCountForScore(card, 4)}</span>
+              <span>🎉{getVoteCountForScore(card, 5)}</span>
             </span>
+          ) : (
             <span className="text-muted-foreground">
-              ({card.vote_count}/{totalParticipants} voted)
+              {card.vote_count}/{totalParticipants} voted
             </span>
-          </span>
+          )}
 
           {/* Comment count */}
           {commentCount > 0 && (

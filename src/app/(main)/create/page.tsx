@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Plane, Loader2, ArrowLeft } from "lucide-react";
+import { LocationAutocomplete } from "@/components/ui/location-autocomplete";
 import Link from "next/link";
 
 export default function CreateTripPage() {
@@ -129,12 +130,12 @@ export default function CreateTripPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="destination">Destination</Label>
-                  <Input
+                  <LocationAutocomplete
                     id="destination"
                     value={destination}
-                    onChange={(e) => setDestination(e.target.value)}
-                    placeholder="Paris, France"
-                    required
+                    onChange={setDestination}
+                    onSelect={(s) => setDestination(s.name)}
+                    placeholder="Search for a destination..."
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">

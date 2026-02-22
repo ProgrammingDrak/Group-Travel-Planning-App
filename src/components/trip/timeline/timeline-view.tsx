@@ -41,6 +41,8 @@ import {
   Calendar,
   DollarSign,
   Home,
+  ArrowLeftCircle,
+  ArrowRightCircle,
 } from "lucide-react";
 import { isAccommodationType, getCardIcon } from "@/lib/card-icons";
 import { recalculateStartTimes } from "@/lib/time-utils";
@@ -93,51 +95,68 @@ function SkeletonCard() {
   );
 }
 
-// Rev 7: Lodging indicator in day header
+// Lodging indicator in day header with hover summary + clickable to open card
 function DayLodgingIndicator({
   lodgingCards,
   dateStr,
+  onCardClick,
 }: {
   lodgingCards: CardWithVoteStats[];
   dateStr: string;
+  onCardClick?: (card: CardWithVoteStats) => void;
 }) {
   if (lodgingCards.length === 0) return null;
 
   return (
     <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div className="flex items-center gap-1 cursor-pointer">
-            {lodgingCards.map((card) => (
-              <span
-                key={card.id}
-                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-200 text-xs"
-              >
-                {getCardIcon(card.type, card.icon)}
-              </span>
-            ))}
-          </div>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" className="max-w-xs p-3 space-y-2">
-          {lodgingCards.map((card) => {
-            const isCheckIn = card.date === dateStr;
-            const isCheckOut = card.end_date === dateStr;
-            return (
-              <div key={card.id} className="space-y-0.5">
+      <div className="flex items-center gap-1">
+        {lodgingCards.map((card) => {
+          const isCheckIn = card.date === dateStr;
+          const isCheckOut = card.end_date === dateStr;
+          return (
+            <Tooltip key={card.id}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-200 text-xs hover:bg-indigo-100 hover:border-indigo-300 transition-colors cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCardClick?.(card);
+                  }}
+                >
+                  {getCardIcon(card.type, card.icon)}
+                  {isCheckIn && <span className="text-[9px] text-green-600 font-medium ml-0.5">in</span>}
+                  {isCheckOut && <span className="text-[9px] text-red-600 font-medium ml-0.5">out</span>}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-xs p-3 space-y-1.5">
                 <div className="flex items-center gap-1.5">
-                  <span>{getCardIcon(card.type, card.icon)}</span>
-                  <span className="font-medium text-sm">{card.title}</span>
+                  <span className="text-base">{getCardIcon(card.type, card.icon)}</span>
+                  <span className="font-semibold text-sm">{card.title}</span>
                 </div>
                 {card.location && (
-                  <p className="text-xs text-muted-foreground">{card.location}</p>
+                  <p className="text-xs text-muted-foreground">📍 {card.location}</p>
+                )}
+                {card.address && card.address !== card.location && (
+                  <p className="text-[10px] text-muted-foreground">{card.address}</p>
                 )}
                 {card.budget > 0 && (
                   <p className="text-xs text-muted-foreground">
-                    ${card.budget.toLocaleString()}
+                    💰 ${card.budget.toLocaleString()}
                     {card.date && card.end_date ? " total" : "/night"}
                   </p>
                 )}
-                <div className="flex gap-1">
+                {card.start_time && (
+                  <p className="text-xs text-muted-foreground">
+                    🕐 {card.start_time}
+                  </p>
+                )}
+                {card.description && (
+                  <p className="text-xs text-muted-foreground line-clamp-2">
+                    {card.description}
+                  </p>
+                )}
+                <div className="flex gap-1 pt-1">
                   {isCheckIn && (
                     <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700">
                       Check-in
@@ -148,18 +167,18 @@ function DayLodgingIndicator({
                       Check-out
                     </Badge>
                   )}
-                  <Badge
-                    variant="outline"
-                    className="text-[10px]"
-                  >
+                  <Badge variant="outline" className="text-[10px]">
                     {card.stage}
                   </Badge>
                 </div>
-              </div>
-            );
-          })}
-        </TooltipContent>
-      </Tooltip>
+                <p className="text-[10px] text-muted-foreground italic pt-1">
+                  Click to view full details
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </div>
     </TooltipProvider>
   );
 }
@@ -229,9 +248,11 @@ export function TimelineView({
     return { activityCards: activities, accommodationCards: accommodations };
   }, [filteredCards]);
 
-  // Group activity cards by date (excluding accommodation types)
-  const cardsByDate = useMemo(() => {
+  // Group activity cards by date, including pre/post trip sections (Rev 9)
+  const { cardsByDate, preTripCards, postTripCards } = useMemo(() => {
     const grouped: Record<string, CardWithVoteStats[]> = {};
+    const preTripList: CardWithVoteStats[] = [];
+    const postTripList: CardWithVoteStats[] = [];
 
     for (const date of tripDates) {
       const dateStr = format(date, "yyyy-MM-dd");
@@ -242,6 +263,10 @@ export function TimelineView({
     for (const card of activityCards) {
       if (!card.date) {
         grouped["unscheduled"].push(card);
+      } else if (card.date < trip.start_date) {
+        preTripList.push(card);
+      } else if (card.date > trip.end_date) {
+        postTripList.push(card);
       } else {
         const cardDateStr = card.date;
         if (grouped[cardDateStr]) {
@@ -255,9 +280,11 @@ export function TimelineView({
     for (const key of Object.keys(grouped)) {
       grouped[key].sort((a, b) => a.sort_order - b.sort_order);
     }
+    preTripList.sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.sort_order - b.sort_order);
+    postTripList.sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.sort_order - b.sort_order);
 
-    return grouped;
-  }, [activityCards, tripDates]);
+    return { cardsByDate: grouped, preTripCards: preTripList, postTripCards: postTripList };
+  }, [activityCards, tripDates, trip.start_date, trip.end_date]);
 
   // Rev 7: Compute lodging cards per day
   const lodgingByDate = useMemo(() => {
@@ -301,10 +328,15 @@ export function TimelineView({
 
   // All accordion values expanded by default
   const defaultAccordionValues = useMemo(() => {
-    const values = tripDates.map((date) => format(date, "yyyy-MM-dd"));
+    const values: string[] = [];
+    if (preTripCards.length > 0) values.push("pre-trip");
+    for (const date of tripDates) {
+      values.push(format(date, "yyyy-MM-dd"));
+    }
+    if (postTripCards.length > 0) values.push("post-trip");
     values.push("unscheduled");
     return values;
-  }, [tripDates]);
+  }, [tripDates, preTripCards, postTripCards]);
 
   // Rev 1: Handle drag and drop with auto time recalculation
   const handleDragEnd = useCallback(
@@ -436,7 +468,7 @@ export function TimelineView({
   const hasNoCards = totalCards === 0;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-h-[calc(100vh-200px)] overflow-y-auto">
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-2">
         <Filter className="h-4 w-4 text-muted-foreground" />
@@ -486,14 +518,20 @@ export function TimelineView({
         </Button>
       </div>
 
-      {/* Empty state */}
+      {/* Rev 2: Empty state with prominent Add Card button */}
       {hasNoCards && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <Calendar className="h-12 w-12 text-muted-foreground/50 mb-4" />
-          <p className="text-muted-foreground text-sm">
-            No activities planned yet. Click &apos;+ Add Card&apos; to start
-            planning!
+          <p className="text-muted-foreground text-sm mb-4">
+            No activities planned yet. Start building your itinerary!
           </p>
+          <Button
+            onClick={() => onAddCard(tripDates.length > 0 ? format(tripDates[0], "yyyy-MM-dd") : "unscheduled")}
+            className="gap-1.5"
+          >
+            <Plus className="h-4 w-4" />
+            Add Your First Card
+          </Button>
         </div>
       )}
 
@@ -505,6 +543,39 @@ export function TimelineView({
             defaultValue={defaultAccordionValues}
             className="space-y-2"
           >
+            {/* Rev 9: Pre-Trip section */}
+            {preTripCards.length > 0 && (
+              <AccordionItem
+                value="pre-trip"
+                className="border rounded-lg px-4 border-amber-300 bg-amber-50/50"
+              >
+                <AccordionTrigger className="hover:no-underline">
+                  <div className="flex items-center gap-3">
+                    <ArrowLeftCircle className="h-4 w-4 text-amber-600" />
+                    <span className="font-semibold text-sm text-amber-800">
+                      Pre-Trip
+                    </span>
+                    <Badge variant="outline" className="text-xs border-amber-300 text-amber-700">
+                      {preTripCards.length}{" "}
+                      {preTripCards.length === 1 ? "card" : "cards"}
+                    </Badge>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-1">
+                    {preTripCards.map((card) => (
+                      <CardItem
+                        key={card.id}
+                        card={card}
+                        onClick={() => onCardClick(card)}
+                        totalParticipants={participants.length}
+                      />
+                    ))}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            )}
+
             {/* Trip date sections */}
             {tripDates.map((date) => {
               const dateStr = format(date, "yyyy-MM-dd");
@@ -534,11 +605,15 @@ export function TimelineView({
                           {dayBudget.toLocaleString()}
                         </span>
                       )}
-                      {/* Rev 7: Lodging indicator */}
+                      {/* Lodging indicator with hover summary */}
                       {dayLodging.length > 0 && (
                         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                           <Home className="h-3.5 w-3.5 text-indigo-500" />
-                          <DayLodgingIndicator lodgingCards={dayLodging} dateStr={dateStr} />
+                          <DayLodgingIndicator
+                            lodgingCards={dayLodging}
+                            dateStr={dateStr}
+                            onCardClick={onCardClick}
+                          />
                         </div>
                       )}
                     </div>
@@ -628,6 +703,39 @@ export function TimelineView({
                 </AccordionItem>
               );
             })}
+
+            {/* Rev 9: Post-Trip section */}
+            {postTripCards.length > 0 && (
+              <AccordionItem
+                value="post-trip"
+                className="border rounded-lg px-4 border-amber-300 bg-amber-50/50"
+              >
+                <AccordionTrigger className="hover:no-underline">
+                  <div className="flex items-center gap-3">
+                    <ArrowRightCircle className="h-4 w-4 text-amber-600" />
+                    <span className="font-semibold text-sm text-amber-800">
+                      Post-Trip
+                    </span>
+                    <Badge variant="outline" className="text-xs border-amber-300 text-amber-700">
+                      {postTripCards.length}{" "}
+                      {postTripCards.length === 1 ? "card" : "cards"}
+                    </Badge>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-1">
+                    {postTripCards.map((card) => (
+                      <CardItem
+                        key={card.id}
+                        card={card}
+                        onClick={() => onCardClick(card)}
+                        totalParticipants={participants.length}
+                      />
+                    ))}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            )}
 
             {/* Unscheduled section */}
             <AccordionItem

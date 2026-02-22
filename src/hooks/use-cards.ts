@@ -53,6 +53,14 @@ export function useCards({ tripId, stage, date, participantId }: UseCardsOptions
         const totalScore = votes.reduce((sum: number, v: { score: number }) => sum + v.score, 0);
         const voteCount = votes.length;
 
+        // Rev 4: Compute per-tier vote counts
+        const voteCounts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+        for (const v of votes) {
+          if (voteCounts[v.score] !== undefined) {
+            voteCounts[v.score]++;
+          }
+        }
+
         // Remove the nested relations from the card object
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { votes: _v, card_participants: _cp, ...cardData } = card as Record<string, unknown>;
@@ -62,6 +70,7 @@ export function useCards({ tripId, stage, date, participantId }: UseCardsOptions
           avg_score: voteCount > 0 ? totalScore / voteCount : null,
           vote_count: voteCount,
           participant_count: cardParticipants.filter((cp) => cp.is_participating).length,
+          vote_counts: voteCounts,
         } as CardWithVoteStats;
       });
 

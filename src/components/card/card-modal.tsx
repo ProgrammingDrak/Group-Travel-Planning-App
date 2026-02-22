@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { formatDistanceToNow } from "date-fns";
 import {
-  Star,
   Trash2,
   Send,
   Pin,
@@ -19,6 +18,7 @@ import {
   X,
   Plus,
   Info,
+  ThumbsDown,
 } from "lucide-react";
 
 import type {
@@ -36,6 +36,7 @@ import type {
 } from "@/types";
 import { createClient } from "@/lib/supabase/client";
 import { useParticipant } from "@/hooks/use-participant";
+// card-icons used in CARD_TYPES and VOTE_TIERS constants above
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,17 +69,39 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { LocationAutocomplete } from "@/components/ui/location-autocomplete";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const CARD_TYPES: { value: CardType; label: string }[] = [
-  { value: "activity", label: "Activity" },
-  { value: "restaurant", label: "Restaurant" },
-  { value: "event", label: "Event" },
-  { value: "lodging", label: "Lodging" },
-  { value: "rental", label: "Rental" },
+const CARD_TYPES: { value: CardType; label: string; emoji: string }[] = [
+  { value: "activity", label: "Activity", emoji: "🎯" },
+  { value: "restaurant", label: "Restaurant", emoji: "🍽️" },
+  { value: "food", label: "Food", emoji: "🍕" },
+  { value: "event", label: "Event", emoji: "🎫" },
+  { value: "concert", label: "Concert", emoji: "🎵" },
+  { value: "outdoor", label: "Outdoor", emoji: "🏕️" },
+  { value: "lodging", label: "Lodging", emoji: "🏠" },
+  { value: "rental", label: "Rental", emoji: "🚗" },
+  { value: "flight", label: "Flight", emoji: "✈️" },
+  { value: "shopping", label: "Shopping", emoji: "🛍️" },
+  { value: "sightseeing", label: "Sightseeing", emoji: "📸" },
+  { value: "nightlife", label: "Nightlife", emoji: "🌙" },
+  { value: "spa", label: "Spa", emoji: "💆" },
+  { value: "sports", label: "Sports", emoji: "⚽" },
+  { value: "museum", label: "Museum", emoji: "🏛️" },
+  { value: "beach", label: "Beach", emoji: "🏖️" },
+];
+
+// Rev 4: 5-tier voting system
+const VOTE_TIERS = [
+  { score: 1, emoji: "👎", label: "Hard Stop", description: "Hard stop, will not attend", color: "bg-red-100 text-red-700 border-red-300 hover:bg-red-200" },
+  { score: 2, emoji: "❌", label: "Not Interested", description: "Not interested in going", color: "bg-orange-100 text-orange-700 border-orange-300 hover:bg-orange-200" },
+  { score: 3, emoji: "➖", label: "Tag Along", description: "Not participating but will tag along", color: "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200" },
+  { score: 4, emoji: "✅", label: "I'm In", description: "Sign me up, I'm in!", color: "bg-green-100 text-green-700 border-green-300 hover:bg-green-200" },
+  { score: 5, emoji: "🎉", label: "Must Do!", description: "This will make or break my trip!", color: "bg-purple-100 text-purple-700 border-purple-300 hover:bg-purple-200" },
 ];
 
 const STAGE_OPTIONS: { value: CardStage; label: string; color: string }[] = [
@@ -162,7 +185,7 @@ export function CardModal({
               Details
             </TabsTrigger>
             <TabsTrigger value="voting" className="gap-1.5">
-              <Star className="h-3.5 w-3.5" />
+              <ThumbsDown className="h-3.5 w-3.5" />
               Voting
             </TabsTrigger>
             <TabsTrigger value="comments" className="gap-1.5">
@@ -259,6 +282,8 @@ function DetailsTab({ card, isOrganizer, onUpdate, onDelete }: DetailsTabProps) 
   const [isDateLocked, setIsDateLocked] = useState(card.is_date_locked);
   const [isMultiDay, setIsMultiDay] = useState(card.is_multi_day);
   const [endDate, setEndDate] = useState(card.end_date ?? "");
+  const [suggestedArrival, setSuggestedArrival] = useState(false);
+  const [suggestedArrivalNotes, setSuggestedArrivalNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -278,15 +303,26 @@ function DetailsTab({ card, isOrganizer, onUpdate, onDelete }: DetailsTabProps) 
     setIsDateLocked(card.is_date_locked);
     setIsMultiDay(card.is_multi_day);
     setEndDate(card.end_date ?? "");
+    setSuggestedArrival(false);
+    setSuggestedArrivalNotes("");
     setConfirmDelete(false);
   }, [card]);
 
   const handleSave = async () => {
     setSaving(true);
     try {
+      // If suggested arrival notes were added, append to description
+      let finalDescription = description;
+      if (suggestedArrival && suggestedArrivalNotes.trim()) {
+        const arrivalNote = `\n\n📍 Suggested Arrival Time Notes: ${suggestedArrivalNotes.trim()}`;
+        if (!description.includes("Suggested Arrival Time Notes:")) {
+          finalDescription = description + arrivalNote;
+        }
+      }
+
       await onUpdate({
         title,
-        description,
+        description: finalDescription,
         date: date || null,
         start_time: startTime || null,
         duration_minutes: durationMinutes,
@@ -340,26 +376,19 @@ function DetailsTab({ card, isOrganizer, onUpdate, onDelete }: DetailsTabProps) 
         />
       </div>
 
-      {/* Date & Time row */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="card-date">Date</Label>
-          <Input
-            id="card-date"
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="card-start-time">Start Time</Label>
-          <Input
-            id="card-start-time"
-            type="time"
-            value={startTime}
-            onChange={(e) => setStartTime(e.target.value)}
-          />
-        </div>
+      {/* Rev 6: Combined Date & Time picker */}
+      <div className="grid grid-cols-2 gap-4">
+        <DateTimePicker
+          id="card-datetime"
+          date={date}
+          time={startTime}
+          onDateChange={setDate}
+          onTimeChange={setStartTime}
+          suggestedArrival={suggestedArrival}
+          onSuggestedArrivalChange={setSuggestedArrival}
+          suggestedArrivalNotes={suggestedArrivalNotes}
+          onSuggestedArrivalNotesChange={setSuggestedArrivalNotes}
+        />
         <div className="space-y-2">
           <Label htmlFor="card-duration">Duration (min)</Label>
           <Input
@@ -372,15 +401,18 @@ function DetailsTab({ card, isOrganizer, onUpdate, onDelete }: DetailsTabProps) 
         </div>
       </div>
 
-      {/* Location & Address */}
+      {/* Rev 7: Location with autocomplete */}
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="card-location">Location</Label>
-          <Input
-            id="card-location"
+          <Label>Location</Label>
+          <LocationAutocomplete
             value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            placeholder="Location name"
+            onChange={setLocation}
+            onSelect={(s) => {
+              setLocation(s.name);
+              setAddress(s.address);
+            }}
+            placeholder="Search for a location..."
           />
         </div>
         <div className="space-y-2">
@@ -389,7 +421,7 @@ function DetailsTab({ card, isOrganizer, onUpdate, onDelete }: DetailsTabProps) 
             id="card-address"
             value={address}
             onChange={(e) => setAddress(e.target.value)}
-            placeholder="Full address"
+            placeholder="Full address (auto-filled)"
           />
         </div>
       </div>
@@ -439,7 +471,9 @@ function DetailsTab({ card, isOrganizer, onUpdate, onDelete }: DetailsTabProps) 
             <SelectContent>
               {CARD_TYPES.map((t) => (
                 <SelectItem key={t.value} value={t.value}>
-                  {t.label}
+                  <span className="flex items-center gap-1.5">
+                    <span>{t.emoji}</span> {t.label}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -663,7 +697,6 @@ function VotingTab({
       });
 
       if (!response.ok) {
-        // Rollback on failure
         setMyScore(previousScore);
         setVotes(previousVotes);
       }
@@ -675,32 +708,51 @@ function VotingTab({
     }
   };
 
-  const averageScore =
-    votes.length > 0
-      ? votes.reduce((sum, v) => sum + v.score, 0) / votes.length
-      : 0;
+  // Rev 4: Count votes per tier
+  const voteCounts = useMemo(() => {
+    const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    for (const v of votes) {
+      if (counts[v.score] !== undefined) {
+        counts[v.score]++;
+      }
+    }
+    return counts;
+  }, [votes]);
 
   const totalParticipants = participants.length;
 
   return (
     <div className="space-y-6">
-      {/* Current user vote */}
+      {/* Rev 4: 5-tier vote buttons */}
       <div className="space-y-3">
         <Label className="text-base font-semibold">Cast Your Vote</Label>
-        <div className="flex items-center gap-3">
-          {[1, 2, 3].map((score) => (
-            <Button
-              key={score}
-              variant={myScore === score ? "default" : "outline"}
-              size="lg"
-              className="h-16 w-16 text-2xl font-bold"
-              onClick={() => handleVote(score)}
-              disabled={!currentParticipant || submitting}
-            >
-              {score}
-            </Button>
-          ))}
-        </div>
+        <TooltipProvider>
+          <div className="flex items-center gap-2">
+            {VOTE_TIERS.map((tier) => (
+              <Tooltip key={tier.score}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className={`h-14 w-14 text-xl p-0 border-2 transition-all ${
+                      myScore === tier.score
+                        ? tier.color + " ring-2 ring-offset-1 ring-current font-bold"
+                        : "hover:scale-105"
+                    }`}
+                    onClick={() => handleVote(tier.score)}
+                    disabled={!currentParticipant || submitting}
+                  >
+                    {tier.emoji}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-[200px]">
+                  <p className="font-medium">{tier.label}</p>
+                  <p className="text-xs text-muted-foreground">{tier.description}</p>
+                </TooltipContent>
+              </Tooltip>
+            ))}
+          </div>
+        </TooltipProvider>
         <div className="flex items-center gap-2 mt-2">
           <Switch
             id="anonymous-vote"
@@ -715,25 +767,33 @@ function VotingTab({
 
       <Separator />
 
-      {/* Score summary */}
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <p className="text-sm text-muted-foreground">Average Score</p>
-          <p className="text-4xl font-bold">
-            {votes.length > 0 ? averageScore.toFixed(1) : "\u2014"}
-          </p>
-        </div>
-        <div className="text-right space-y-1">
-          <p className="text-sm text-muted-foreground">Participation</p>
-          <p className="text-lg font-semibold">
+      {/* Rev 4: Vote counts per tier instead of average */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <Label className="text-base font-semibold">Vote Summary</Label>
+          <span className="text-sm text-muted-foreground">
             {votes.length}/{totalParticipants} voted
-          </p>
+          </span>
+        </div>
+        <div className="grid grid-cols-5 gap-2">
+          {VOTE_TIERS.map((tier) => (
+            <div
+              key={tier.score}
+              className="flex flex-col items-center gap-1 rounded-lg border p-2"
+            >
+              <span className="text-lg">{tier.emoji}</span>
+              <span className="text-xl font-bold">{voteCounts[tier.score]}</span>
+              <span className="text-[10px] text-muted-foreground text-center leading-tight">
+                {tier.label}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
 
       <Separator />
 
-      {/* Votes list */}
+      {/* Individual votes list */}
       <div className="space-y-3">
         <Label className="text-base font-semibold">All Votes</Label>
         {loading ? (
@@ -742,32 +802,29 @@ function VotingTab({
           <p className="text-sm text-muted-foreground">No votes yet. Be the first!</p>
         ) : (
           <div className="space-y-2">
-            {votes.map((vote) => (
-              <div
-                key={vote.id}
-                className="flex items-center justify-between rounded-lg border p-3"
-              >
-                <span className="text-sm font-medium">
-                  {vote.is_anonymous
-                    ? "Anonymous"
-                    : vote.participant
-                    ? `${vote.participant.first_name} ${vote.participant.last_name}`
-                    : "Unknown"}
-                </span>
-                <div className="flex items-center gap-0.5">
-                  {[1, 2, 3].map((s) => (
-                    <Star
-                      key={s}
-                      className={`h-4 w-4 ${
-                        s <= vote.score
-                          ? "text-yellow-500 fill-yellow-500"
-                          : "text-muted-foreground/30"
-                      }`}
-                    />
-                  ))}
+            {votes.map((vote) => {
+              const tier = VOTE_TIERS.find((t) => t.score === vote.score);
+              return (
+                <div
+                  key={vote.id}
+                  className="flex items-center justify-between rounded-lg border p-3"
+                >
+                  <span className="text-sm font-medium">
+                    {vote.is_anonymous
+                      ? "Anonymous"
+                      : vote.participant
+                      ? `${vote.participant.first_name} ${vote.participant.last_name}`
+                      : "Unknown"}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-lg">{tier?.emoji ?? "?"}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {tier?.label ?? "Unknown"}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

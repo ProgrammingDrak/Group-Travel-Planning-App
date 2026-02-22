@@ -18,8 +18,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2 } from "lucide-react";
+// Using Dialog for the confirmation dialog as well
+import { Loader2, AlertTriangle } from "lucide-react";
+import { LocationAutocomplete } from "@/components/ui/location-autocomplete";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
+import { ExpenseItemBuilder, type ExpenseItem } from "@/components/ui/expense-item-builder";
 import type { CardType } from "@/types";
+import { getCardTypeInfo } from "@/lib/card-icons";
 
 interface AddCardDialogProps {
   isOpen: boolean;
@@ -35,14 +40,27 @@ interface AddCardDialogProps {
   }) => Promise<void>;
   defaultDate?: string | null;
   tripId: string;
+  tripStartDate?: string;
+  tripEndDate?: string;
 }
 
-const cardTypes: { value: CardType; label: string }[] = [
-  { value: "activity", label: "Activity" },
-  { value: "restaurant", label: "Restaurant" },
-  { value: "event", label: "Event" },
-  { value: "lodging", label: "Lodging" },
-  { value: "rental", label: "Rental" },
+const cardTypes: { value: CardType; label: string; emoji: string }[] = [
+  { value: "activity", label: "Activity", emoji: "🎯" },
+  { value: "restaurant", label: "Restaurant", emoji: "🍽️" },
+  { value: "food", label: "Food", emoji: "🍕" },
+  { value: "event", label: "Event", emoji: "🎫" },
+  { value: "concert", label: "Concert", emoji: "🎵" },
+  { value: "outdoor", label: "Outdoor", emoji: "🏕️" },
+  { value: "lodging", label: "Lodging", emoji: "🏠" },
+  { value: "rental", label: "Rental", emoji: "🚗" },
+  { value: "flight", label: "Flight", emoji: "✈️" },
+  { value: "shopping", label: "Shopping", emoji: "🛍️" },
+  { value: "sightseeing", label: "Sightseeing", emoji: "📸" },
+  { value: "nightlife", label: "Nightlife", emoji: "🌙" },
+  { value: "spa", label: "Spa", emoji: "💆" },
+  { value: "sports", label: "Sports", emoji: "⚽" },
+  { value: "museum", label: "Museum", emoji: "🏛️" },
+  { value: "beach", label: "Beach", emoji: "🏖️" },
 ];
 
 export function AddCardDialog({
@@ -50,6 +68,8 @@ export function AddCardDialog({
   onClose,
   onSubmit,
   defaultDate,
+  tripStartDate,
+  tripEndDate,
 }: AddCardDialogProps) {
   const [title, setTitle] = useState("");
   const [type, setType] = useState<CardType>("activity");
@@ -57,21 +77,53 @@ export function AddCardDialog({
   const [date, setDate] = useState(defaultDate || "");
   const [startTime, setStartTime] = useState("");
   const [location, setLocation] = useState("");
-  const [budget, setBudget] = useState("");
+  const [address, setAddress] = useState("");
+  const [expenseItems, setExpenseItems] = useState<ExpenseItem[]>([]);
+  const [suggestedArrival, setSuggestedArrival] = useState(false);
+  const [suggestedArrivalNotes, setSuggestedArrivalNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Rev 9: Out-of-range date confirmation
+  const [showDateConfirm, setShowDateConfirm] = useState(false);
+  const [pendingSubmit, setPendingSubmit] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const isDateOutOfRange = () => {
+    if (!date || !tripStartDate || !tripEndDate) return false;
+    return date < tripStartDate || date > tripEndDate;
+  };
+
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
+    // Rev 9: Check if date is out of range
+    if (isDateOutOfRange() && !pendingSubmit) {
+      setShowDateConfirm(true);
+      return;
+    }
+
     setSubmitting(true);
     try {
+      const totalBudget = expenseItems.reduce((sum, item) => sum + item.amount, 0);
+
+      // Build description with suggested arrival notes and expense breakdown
+      let finalDescription = description;
+      if (suggestedArrival && suggestedArrivalNotes.trim()) {
+        finalDescription += `\n\n📍 Suggested Arrival Time Notes: ${suggestedArrivalNotes.trim()}`;
+      }
+      if (expenseItems.length > 0) {
+        const breakdown = expenseItems
+          .map((item) => `${item.type === "communal" ? "👥" : "👤"} ${item.label}: $${item.amount.toFixed(2)}`)
+          .join("\n");
+        finalDescription += `\n\n💰 Expense Breakdown:\n${breakdown}`;
+      }
+
       await onSubmit({
         title,
         type,
-        description,
+        description: finalDescription,
         date: date || null,
         start_time: startTime || null,
-        location,
-        budget: parseFloat(budget) || 0,
+        location: location + (address ? ` (${address})` : ""),
+        budget: totalBudget,
       });
       // Reset form
       setTitle("");
@@ -80,32 +132,47 @@ export function AddCardDialog({
       setDate(defaultDate || "");
       setStartTime("");
       setLocation("");
-      setBudget("");
+      setAddress("");
+      setExpenseItems([]);
+      setSuggestedArrival(false);
+      setSuggestedArrivalNotes("");
+      setPendingSubmit(false);
       onClose();
     } finally {
       setSubmitting(false);
     }
   };
 
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
-          <DialogTitle>Add New Card</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="card-title">Title *</Label>
-            <Input
-              id="card-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g., Visit the Eiffel Tower"
-              required
-            />
-          </div>
+  const handleDateConfirm = async () => {
+    setShowDateConfirm(false);
+    setPendingSubmit(true);
+    await handleSubmit();
+  };
 
-          <div className="grid grid-cols-2 gap-3">
+  const typeInfo = getCardTypeInfo(type);
+
+  return (
+    <>
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="text-lg">{typeInfo.label}</span>
+              Add New Card
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="card-title">Title *</Label>
+              <Input
+                id="card-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g., Visit the Eiffel Tower"
+                required
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="card-type">Type</Label>
               <Select
@@ -118,85 +185,132 @@ export function AddCardDialog({
                 <SelectContent>
                   {cardTypes.map((ct) => (
                     <SelectItem key={ct.value} value={ct.value}>
-                      {ct.label}
+                      <span className="flex items-center gap-1.5">
+                        <span>{ct.emoji}</span> {ct.label}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="card-date">Date</Label>
-              <Input
-                id="card-date"
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-              />
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="card-time">Start Time</Label>
-              <Input
-                id="card-time"
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="card-budget">Budget ($)</Label>
-              <Input
-                id="card-budget"
-                type="number"
-                value={budget}
-                onChange={(e) => setBudget(e.target.value)}
-                placeholder="0"
-                min="0"
-                step="0.01"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="card-location">Location</Label>
-            <Input
-              id="card-location"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="e.g., Champ de Mars, Paris"
+            {/* Rev 6: Combined date-time picker */}
+            <DateTimePicker
+              id="card-datetime"
+              date={date}
+              time={startTime}
+              onDateChange={setDate}
+              onTimeChange={setStartTime}
+              suggestedArrival={suggestedArrival}
+              onSuggestedArrivalChange={setSuggestedArrival}
+              suggestedArrivalNotes={suggestedArrivalNotes}
+              onSuggestedArrivalNotesChange={setSuggestedArrivalNotes}
             />
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="card-desc">Description</Label>
-            <Textarea
-              id="card-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Add notes about this activity..."
-              rows={3}
-            />
-          </div>
+            {/* Rev 9: Out-of-range date warning */}
+            {isDateOutOfRange() && (
+              <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md text-sm">
+                <AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                <p className="text-yellow-800">
+                  This date is outside the trip range
+                  {tripStartDate && tripEndDate
+                    ? ` (${tripStartDate} to ${tripEndDate})`
+                    : ""}
+                  . It will be added to a{" "}
+                  {date < (tripStartDate ?? "") ? "Pre-Trip" : "Post-Trip"} section.
+                </p>
+              </div>
+            )}
 
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
+            {/* Rev 7: Location with autocomplete */}
+            <div className="space-y-2">
+              <Label>Location</Label>
+              <LocationAutocomplete
+                value={location}
+                onChange={setLocation}
+                onSelect={(s) => {
+                  setLocation(s.name);
+                  setAddress(s.address);
+                }}
+                placeholder="Search for a location..."
+              />
+            </div>
+
+            {/* Rev 8: Expense item builder instead of single budget */}
+            <div className="space-y-2">
+              <Label>Expenses</Label>
+              <ExpenseItemBuilder
+                items={expenseItems}
+                onChange={setExpenseItems}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="card-desc">Description</Label>
+              <Textarea
+                id="card-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Add notes about this activity..."
+                rows={3}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={submitting || !title}>
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  "Add Card"
+                )}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rev 9: Out-of-range date confirmation dialog */}
+      <Dialog open={showDateConfirm} onOpenChange={setShowDateConfirm}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-yellow-600" />
+              Date Outside Trip Range
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            The date you selected ({date}) is{" "}
+            {date < (tripStartDate ?? "")
+              ? "before the trip starts"
+              : "after the trip ends"}
+            . This activity will be placed in a{" "}
+            <strong>
+              {date < (tripStartDate ?? "") ? "Pre-Trip" : "Post-Trip"}
+            </strong>{" "}
+            section.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Are you sure the date is correct?
+          </p>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowDateConfirm(false)}
+            >
+              Go Back
             </Button>
-            <Button type="submit" disabled={submitting || !title}>
-              {submitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Adding...
-                </>
-              ) : (
-                "Add Card"
-              )}
+            <Button onClick={handleDateConfirm}>
+              Yes, Add Anyway
             </Button>
           </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

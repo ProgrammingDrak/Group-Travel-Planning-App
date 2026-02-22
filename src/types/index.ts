@@ -62,6 +62,7 @@ export interface CardWithVoteStats extends Card {
   vote_count: number;
   participant_count: number;
   available_dates?: string[];
+  vote_counts?: Record<number, number>; // Rev 4: counts per tier (1-5)
 }
 
 export interface CardParticipant {

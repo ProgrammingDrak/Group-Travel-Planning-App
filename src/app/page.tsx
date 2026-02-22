@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Plane, Users, Calendar, DollarSign, Vote, MessageSquare } from "lucide-react";
+import { TripsDropdown } from "@/components/layout/trips-dropdown";
 
 export default function HomePage() {
   return (
@@ -12,6 +13,7 @@ export default function HomePage() {
             <span className="text-lg">TripSync</span>
           </div>
           <div className="flex items-center gap-2">
+            <TripsDropdown />
             <Link
               href="/templates"
               className="inline-flex items-center justify-center rounded-md text-sm font-medium h-9 px-4 py-2 hover:bg-accent hover:text-accent-foreground transition-colors"

@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Plane, Copy, Users, Library, ChevronDown } from "lucide-react";
+import { TripsDropdown } from "@/components/layout/trips-dropdown";
 import type { Trip } from "@/types";
 
 interface HeaderProps {
@@ -102,8 +103,9 @@ export function Header({ trip, onOpenLibrary, onInvite }: HeaderProps) {
             </DropdownMenu>
           )}
 
-          {!participant && !trip && (
+          {!trip && (
             <div className="flex items-center gap-2">
+              <TripsDropdown />
               <Link href="/templates">
                 <Button variant="ghost" size="sm">
                   Templates

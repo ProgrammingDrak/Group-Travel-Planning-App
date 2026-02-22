@@ -52,6 +52,7 @@ import {
   AlertTriangle,
   Lock,
   ArrowRight,
+  Plus,
 } from "lucide-react";
 import type { CardWithVoteStats, Card, ParticipantSession, CardType } from "@/types";
 
@@ -365,28 +366,42 @@ export default function TripPage() {
         {/* Main content with tabs */}
         <div className="container py-4">
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="mb-4">
-              <TabsTrigger value="timeline" className="gap-1">
-                <Calendar className="h-4 w-4" />
-                <span className="hidden sm:inline">Timeline</span>
-              </TabsTrigger>
-              <TabsTrigger value="budget" className="gap-1">
-                <DollarSign className="h-4 w-4" />
-                <span className="hidden sm:inline">Budget</span>
-              </TabsTrigger>
-              <TabsTrigger value="route" className="gap-1">
-                <Navigation className="h-4 w-4" />
-                <span className="hidden sm:inline">Route</span>
-              </TabsTrigger>
-              <TabsTrigger value="list" className="gap-1">
-                <List className="h-4 w-4" />
-                <span className="hidden sm:inline">List</span>
-              </TabsTrigger>
-              <TabsTrigger value="accommodations" className="gap-1">
-                <Home className="h-4 w-4" />
-                <span className="hidden sm:inline">Stays</span>
-              </TabsTrigger>
-            </TabsList>
+            <div className="flex items-center gap-2 mb-4">
+              <TabsList>
+                <TabsTrigger value="timeline" className="gap-1">
+                  <Calendar className="h-4 w-4" />
+                  <span className="hidden sm:inline">Timeline</span>
+                </TabsTrigger>
+                <TabsTrigger value="budget" className="gap-1">
+                  <DollarSign className="h-4 w-4" />
+                  <span className="hidden sm:inline">Budget</span>
+                </TabsTrigger>
+                <TabsTrigger value="route" className="gap-1">
+                  <Navigation className="h-4 w-4" />
+                  <span className="hidden sm:inline">Route</span>
+                </TabsTrigger>
+                <TabsTrigger value="list" className="gap-1">
+                  <List className="h-4 w-4" />
+                  <span className="hidden sm:inline">List</span>
+                </TabsTrigger>
+                <TabsTrigger value="accommodations" className="gap-1">
+                  <Home className="h-4 w-4" />
+                  <span className="hidden sm:inline">Stays</span>
+                </TabsTrigger>
+              </TabsList>
+              {/* Rev 2: Always-visible Add Card button */}
+              <Button
+                size="sm"
+                className="ml-auto gap-1"
+                onClick={() => {
+                  setAddCardDate(null);
+                  setShowAddCard(true);
+                }}
+              >
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">Add Card</span>
+              </Button>
+            </div>
 
             <TabsContent value="timeline">
               <TimelineView
@@ -476,6 +491,8 @@ export default function TripPage() {
           onSubmit={handleCreateCard}
           defaultDate={addCardDate}
           tripId={tripId}
+          tripStartDate={trip.start_date}
+          tripEndDate={trip.end_date}
         />
 
         {/* Activity Library Sheet */}
