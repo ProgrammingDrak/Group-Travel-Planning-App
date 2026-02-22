@@ -184,6 +184,19 @@ export default function TripPage() {
     setSelectedCard(null);
   }, [selectedCard, deleteCard]);
 
+  const handleCloneCard = useCallback(
+    async (cardData: Partial<Card>, dates: string[]) => {
+      for (const cloneDate of dates) {
+        await createCard({
+          ...cardData,
+          date: cloneDate,
+          created_by: participant?.participant_id || cardData.created_by || null,
+        });
+      }
+    },
+    [createCard, participant]
+  );
+
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     setJoining(true);
@@ -477,8 +490,11 @@ export default function TripPage() {
           }}
           onUpdate={handleUpdateCard}
           onDelete={handleDeleteCard}
+          onClone={handleCloneCard}
           participants={participants}
           tripId={tripId}
+          tripStartDate={trip.start_date}
+          tripEndDate={trip.end_date}
         />
 
         {/* Add Card Dialog */}

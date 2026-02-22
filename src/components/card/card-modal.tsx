@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format, parseISO, eachDayOfInterval } from "date-fns";
 import {
   Trash2,
   Send,
@@ -19,6 +19,9 @@ import {
   Plus,
   Info,
   ThumbsDown,
+  Copy,
+  Calendar,
+  Loader2,
 } from "lucide-react";
 
 import type {
@@ -132,8 +135,11 @@ interface CardModalProps {
   onClose: () => void;
   onUpdate: (updates: Partial<Card>) => Promise<void>;
   onDelete?: () => Promise<void>;
+  onClone?: (cardData: Partial<Card>, dates: string[]) => Promise<void>;
   participants: Participant[];
   tripId: string;
+  tripStartDate?: string;
+  tripEndDate?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,9 +152,12 @@ export function CardModal({
   onClose,
   onUpdate,
   onDelete,
+  onClone,
   participants,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   tripId,
+  tripStartDate,
+  tripEndDate,
 }: CardModalProps) {
   const supabase = useMemo(() => createClient(), []);
   const { participant: currentParticipant, isOrganizer } = useParticipant();
@@ -210,6 +219,9 @@ export function CardModal({
                   isOrganizer={isOrganizer}
                   onUpdate={onUpdate}
                   onDelete={onDelete}
+                  onClone={onClone}
+                  tripStartDate={tripStartDate}
+                  tripEndDate={tripEndDate}
                 />
               </TabsContent>
 
@@ -265,9 +277,12 @@ interface DetailsTabProps {
   isOrganizer: boolean;
   onUpdate: (updates: Partial<Card>) => Promise<void>;
   onDelete?: () => Promise<void>;
+  onClone?: (cardData: Partial<Card>, dates: string[]) => Promise<void>;
+  tripStartDate?: string;
+  tripEndDate?: string;
 }
 
-function DetailsTab({ card, isOrganizer, onUpdate, onDelete }: DetailsTabProps) {
+function DetailsTab({ card, isOrganizer, onUpdate, onDelete, onClone, tripStartDate, tripEndDate }: DetailsTabProps) {
   const [title, setTitle] = useState(card.title);
   const [description, setDescription] = useState(card.description);
   const [date, setDate] = useState(card.date ?? "");
@@ -286,6 +301,22 @@ function DetailsTab({ card, isOrganizer, onUpdate, onDelete }: DetailsTabProps) 
   const [suggestedArrivalNotes, setSuggestedArrivalNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showClone, setShowClone] = useState(false);
+  const [cloneDates, setCloneDates] = useState<Set<string>>(new Set());
+  const [cloning, setCloning] = useState(false);
+
+  // Generate trip days for clone selector
+  const tripDays = useMemo(() => {
+    if (!tripStartDate || !tripEndDate) return [];
+    try {
+      return eachDayOfInterval({
+        start: parseISO(tripStartDate),
+        end: parseISO(tripEndDate),
+      }).map((d) => format(d, "yyyy-MM-dd"));
+    } catch {
+      return [];
+    }
+  }, [tripStartDate, tripEndDate]);
 
   // Reset form when card changes
   useEffect(() => {
@@ -306,6 +337,9 @@ function DetailsTab({ card, isOrganizer, onUpdate, onDelete }: DetailsTabProps) 
     setSuggestedArrival(false);
     setSuggestedArrivalNotes("");
     setConfirmDelete(false);
+    setShowClone(false);
+    setCloneDates(new Set());
+    setCloning(false);
   }, [card]);
 
   const handleSave = async () => {
@@ -349,6 +383,43 @@ function DetailsTab({ card, isOrganizer, onUpdate, onDelete }: DetailsTabProps) 
     if (onDelete) {
       await onDelete();
     }
+  };
+
+  const handleClone = async () => {
+    if (!onClone || cloneDates.size === 0) return;
+    setCloning(true);
+    try {
+      const cardData: Partial<Card> = {
+        title: card.title,
+        type: card.type,
+        description: card.description,
+        start_time: card.start_time,
+        duration_minutes: card.duration_minutes,
+        location: card.location,
+        address: card.address,
+        budget: card.budget,
+        category: card.category,
+        stage: card.stage,
+        created_by: card.created_by,
+      };
+      await onClone(cardData, Array.from(cloneDates));
+      setShowClone(false);
+      setCloneDates(new Set());
+    } finally {
+      setCloning(false);
+    }
+  };
+
+  const toggleCloneDate = (dateStr: string) => {
+    setCloneDates((prev) => {
+      const next = new Set(prev);
+      if (next.has(dateStr)) {
+        next.delete(dateStr);
+      } else {
+        next.add(dateStr);
+      }
+      return next;
+    });
   };
 
   return (
@@ -570,6 +641,82 @@ function DetailsTab({ card, isOrganizer, onUpdate, onDelete }: DetailsTabProps) 
       </div>
 
       <Separator />
+
+      {/* Clone to Days */}
+      {onClone && tripDays.length > 0 && (
+        <>
+          <div className="space-y-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full gap-1.5"
+              onClick={() => setShowClone(!showClone)}
+            >
+              <Copy className="h-4 w-4" />
+              Clone to Other Days
+            </Button>
+
+            {showClone && (
+              <div className="rounded-lg border p-3 space-y-3 bg-muted/20">
+                <p className="text-xs text-muted-foreground">
+                  Select the days to copy this activity to. A duplicate card will be created on each selected day.
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-[200px] overflow-y-auto">
+                  {tripDays.map((dayStr) => {
+                    const isCurrentDay = dayStr === card.date;
+                    const isSelected = cloneDates.has(dayStr);
+                    return (
+                      <button
+                        key={dayStr}
+                        type="button"
+                        disabled={isCurrentDay}
+                        onClick={() => toggleCloneDate(dayStr)}
+                        className={`flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs transition-colors ${
+                          isCurrentDay
+                            ? "opacity-40 cursor-not-allowed bg-muted"
+                            : isSelected
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "hover:bg-accent"
+                        }`}
+                      >
+                        <Calendar className="h-3 w-3 flex-shrink-0" />
+                        <span>{format(parseISO(dayStr), "EEE, MMM d")}</span>
+                        {isCurrentDay && <span className="text-[10px]">(current)</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">
+                    {cloneDates.size} day{cloneDates.size !== 1 ? "s" : ""} selected
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="gap-1"
+                    onClick={handleClone}
+                    disabled={cloneDates.size === 0 || cloning}
+                  >
+                    {cloning ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        Cloning...
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-3.5 w-3.5" />
+                        Clone to {cloneDates.size} Day{cloneDates.size !== 1 ? "s" : ""}
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+          <Separator />
+        </>
+      )}
 
       {/* Actions */}
       <div className="flex items-center justify-between">
