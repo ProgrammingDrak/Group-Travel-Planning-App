@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { getCardIcon, getCardTypeInfo } from "@/lib/card-icons";
 import {
   Star,
   MessageSquare,
@@ -11,6 +12,8 @@ import {
   Users,
   Lock,
   GripVertical,
+  CalendarCheck,
+  AlertTriangle,
 } from "lucide-react";
 import type { CardWithVoteStats, CardStage } from "@/types";
 
@@ -70,12 +73,23 @@ export function CardItem({
     return m > 0 ? `${h}h ${m}m` : `${h}h`;
   };
 
+  const emoji = getCardIcon(card.type, card.icon);
+  const typeInfo = getCardTypeInfo(card.type);
+
+  // Date availability check (Rev 6)
+  const hasAvailabilityDates = card.available_dates && card.available_dates.length > 0;
+  const isDateConflict =
+    hasAvailabilityDates &&
+    card.date &&
+    !card.available_dates!.includes(card.date);
+
   return (
     <div
       className={cn(
         "group relative flex items-start gap-2 rounded-lg border-2 p-3 transition-all cursor-pointer hover:shadow-md",
         stageStyles[card.stage],
         isDragging && "shadow-lg ring-2 ring-primary/20 rotate-1",
+        isDateConflict && "ring-2 ring-orange-400",
         compact && "p-2"
       )}
       onClick={onClick}
@@ -95,17 +109,41 @@ export function CardItem({
         {/* Title row */}
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
+            {/* Card type emoji (Rev 5) */}
+            <span className="text-base flex-shrink-0" title={typeInfo.label}>
+              {emoji}
+            </span>
             <h4 className="font-medium text-sm truncate">{card.title}</h4>
             {card.is_date_locked && (
               <Lock className="h-3 w-3 text-muted-foreground flex-shrink-0" />
             )}
+            {/* Date availability indicators (Rev 6) */}
+            {hasAvailabilityDates && !isDateConflict && (
+              <span className="flex-shrink-0" aria-label={`Available: ${card.available_dates!.join(", ")}`}>
+                <CalendarCheck className="h-3 w-3 text-green-500" />
+              </span>
+            )}
+            {isDateConflict && (
+              <span className="flex-shrink-0" aria-label="Scheduled on unavailable date!">
+                <AlertTriangle className="h-3 w-3 text-orange-500" />
+              </span>
+            )}
           </div>
-          <Badge
-            variant="outline"
-            className={cn("text-xs flex-shrink-0", stageBadgeVariants[card.stage])}
-          >
-            {stageLabels[card.stage]}
-          </Badge>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {/* Type badge with color (Rev 5) */}
+            <Badge
+              variant="outline"
+              className={cn("text-[10px] px-1.5 py-0", typeInfo.color)}
+            >
+              {typeInfo.label}
+            </Badge>
+            <Badge
+              variant="outline"
+              className={cn("text-xs", stageBadgeVariants[card.stage])}
+            >
+              {stageLabels[card.stage]}
+            </Badge>
+          </div>
         </div>
 
         {/* Details row */}

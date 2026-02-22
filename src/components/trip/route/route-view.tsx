@@ -48,6 +48,8 @@ const modeIcons: Record<TransportMode, React.ReactNode> = {
   bus: <Bus className="h-4 w-4" />,
   boat: <Ship className="h-4 w-4" />,
   plane: <Plane className="h-4 w-4" />,
+  uber: <Car className="h-4 w-4" />,
+  taxi: <Car className="h-4 w-4" />,
   other: <MoreHorizontal className="h-4 w-4" />,
 };
 
@@ -59,6 +61,8 @@ const modeLabels: Record<TransportMode, string> = {
   bus: "Bus",
   boat: "Boat",
   plane: "Plane",
+  uber: "Uber",
+  taxi: "Taxi",
   other: "Other",
 };
 

@@ -1,7 +1,12 @@
-export type CardType = 'activity' | 'restaurant' | 'event' | 'lodging' | 'rental';
+export type CardType =
+  | 'activity' | 'restaurant' | 'food' | 'event' | 'concert'
+  | 'outdoor' | 'lodging' | 'rental' | 'flight' | 'shopping'
+  | 'sightseeing' | 'nightlife' | 'spa' | 'sports' | 'museum' | 'beach';
+
 export type CardStage = 'idea' | 'hot_contender' | 'chosen' | 'booked';
-export type TransportMode = 'walk' | 'drive' | 'bike' | 'train' | 'bus' | 'boat' | 'plane' | 'other';
+export type TransportMode = 'walk' | 'drive' | 'bike' | 'train' | 'bus' | 'boat' | 'plane' | 'uber' | 'taxi' | 'other';
 export type SplitType = 'equal' | 'custom_amount' | 'custom_percent';
+export type ExpenseItemType = 'per_person' | 'communal';
 
 export interface Trip {
   id: string;
@@ -45,6 +50,7 @@ export interface Card {
   is_multi_day: boolean;
   end_date: string | null;
   images_urls: string[];
+  icon: string | null;
   created_by: string | null;
   sort_order: number;
   created_at: string;
@@ -55,6 +61,7 @@ export interface CardWithVoteStats extends Card {
   avg_score: number | null;
   vote_count: number;
   participant_count: number;
+  available_dates?: string[];
 }
 
 export interface CardParticipant {
@@ -96,6 +103,8 @@ export interface CommentReaction {
   created_at: string;
 }
 
+// ---- Expenses (Rev 4) ----
+
 export interface Expense {
   id: string;
   card_id: string;
@@ -106,6 +115,8 @@ export interface Expense {
   created_at: string;
   paid_by?: Participant;
   splits?: ExpenseSplit[];
+  line_items?: ExpenseLineItem[];
+  expense_participants?: ExpenseParticipantRecord[];
 }
 
 export interface ExpenseSplit {
@@ -115,8 +126,70 @@ export interface ExpenseSplit {
   amount_owed: number;
   is_settled: boolean;
   settled_at: string | null;
+  payment_status: 'unpaid' | 'pending' | 'paid';
+  reimbursement_status: 'none' | 'requested' | 'reimbursed';
   participant?: Participant;
 }
+
+export interface ExpenseLineItem {
+  id: string;
+  expense_id: string;
+  description: string;
+  amount: number;
+  item_type: ExpenseItemType;
+  sort_order: number;
+}
+
+export interface ExpenseParticipantRecord {
+  id: string;
+  expense_id: string;
+  participant_id: string;
+  is_opted_in: boolean;
+}
+
+// ---- Commute Segments (Rev 2, 3) ----
+
+export interface CommuteSegment {
+  id: string;
+  from_card_id: string;
+  to_card_id: string;
+  break_minutes: number;
+  created_at: string;
+  updated_at: string;
+  options: CommuteOption[];
+}
+
+export interface CommuteOption {
+  id: string;
+  segment_id: string;
+  mode: TransportMode;
+  label: string;
+  duration_minutes: number;
+  cost: number;
+  notes: string;
+  confirmation_number: string;
+  attachment_urls: string[];
+  detail_fields: Record<string, string>;
+  sort_order: number;
+  participants?: CommuteOptionParticipant[];
+}
+
+export interface CommuteOptionParticipant {
+  id: string;
+  commute_option_id: string;
+  participant_id: string;
+  participant?: Participant;
+}
+
+// ---- Date Availability (Rev 6) ----
+
+export interface CardAvailableDate {
+  id: string;
+  card_id: string;
+  available_date: string;
+}
+
+// ---- Legacy (kept for compatibility) ----
 
 export interface TransportationOverride {
   id: string;

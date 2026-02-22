@@ -6,6 +6,7 @@ import { format, parseISO } from "date-fns";
 import { useTrip } from "@/hooks/use-trip";
 import { useCards } from "@/hooks/use-cards";
 import { useRealtime } from "@/hooks/use-realtime";
+import { useCommuteSegments } from "@/hooks/use-commute-segments";
 import {
   ParticipantContext,
   getStoredParticipant,
@@ -69,6 +70,18 @@ export default function TripPage() {
     deleteCard,
     reorderCards,
   } = useCards({ tripId });
+
+  // Commute segments
+  const {
+    segments: commuteSegments,
+    createOrUpdateSegment,
+    addOption: addCommuteOption,
+    updateOption: updateCommuteOption,
+    deleteOption: deleteCommuteOption,
+    assignParticipant: assignCommuteParticipant,
+    removeParticipant: removeCommuteParticipant,
+    updateBreakTime,
+  } = useCommuteSegments(tripId);
 
   // Participant state
   const [participant, setParticipant] = useState<ParticipantSession | null>(null);
@@ -380,9 +393,29 @@ export default function TripPage() {
                 trip={trip}
                 cards={cards}
                 participants={participants}
+                commuteSegments={commuteSegments}
                 onCardClick={handleCardClick}
                 onAddCard={handleAddCard}
                 onReorderCards={reorderCards}
+                onCreateOrUpdateSegment={createOrUpdateSegment}
+                onAddCommuteOption={async (segmentId, data) => {
+                  await addCommuteOption(segmentId, data.mode as import("@/types").TransportMode, data.duration_minutes ?? 15, {
+                    label: data.label,
+                    cost: data.cost,
+                    notes: data.notes,
+                    confirmationNumber: data.confirmation_number,
+                    detailFields: data.detail_fields,
+                  });
+                }}
+                onUpdateCommuteOption={async (optionId, data) => {
+                  await updateCommuteOption(optionId, data as Record<string, unknown> & Parameters<typeof updateCommuteOption>[1]);
+                }}
+                onDeleteCommuteOption={deleteCommuteOption}
+                onAssignParticipant={async (optionId, participantId) => {
+                  await assignCommuteParticipant(optionId, participantId);
+                }}
+                onRemoveParticipant={removeCommuteParticipant}
+                onUpdateBreakTime={updateBreakTime}
                 loading={cardsLoading}
               />
             </TabsContent>

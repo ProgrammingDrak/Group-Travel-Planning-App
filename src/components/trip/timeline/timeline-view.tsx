@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import type { CardWithVoteStats, CardStage, Participant, Trip } from "@/types";
+import type { CardWithVoteStats, CardStage, Participant, Trip, CommuteSegment } from "@/types";
 import {
   DragDropContext,
   Droppable,
@@ -10,6 +10,8 @@ import {
 } from "@hello-pangea/dnd";
 import { format, eachDayOfInterval, parseISO } from "date-fns";
 import { CardItem } from "@/components/card/card-item";
+import { CommuteSegmentIndicator } from "@/components/trip/commute/commute-segment-indicator";
+import { CommuteEditor } from "@/components/trip/commute/commute-editor";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -25,6 +27,12 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Plus,
@@ -32,25 +40,28 @@ import {
   Sparkles,
   Calendar,
   DollarSign,
-  Car,
-  Footprints,
-  Bike,
-  Train,
-  Bus,
-  Ship,
-  Plane,
+  Home,
 } from "lucide-react";
-import type { TransportMode } from "@/types";
+import { isAccommodationType, getCardIcon } from "@/lib/card-icons";
+import { recalculateStartTimes } from "@/lib/time-utils";
 
 interface TimelineViewProps {
   trip: Trip;
   cards: CardWithVoteStats[];
   participants: Participant[];
+  commuteSegments: CommuteSegment[];
   onCardClick: (card: CardWithVoteStats) => void;
   onAddCard: (date: string) => void;
   onReorderCards: (
-    reordered: { id: string; sort_order: number; date?: string | null }[]
+    reordered: { id: string; sort_order: number; date?: string | null; start_time?: string }[]
   ) => void;
+  onCreateOrUpdateSegment: (fromCardId: string, toCardId: string, breakMinutes?: number) => Promise<CommuteSegment | null>;
+  onAddCommuteOption: (segmentId: string, data: { mode: string; label?: string; duration_minutes?: number; cost?: number; notes?: string; confirmation_number?: string; detail_fields?: Record<string, string> }) => Promise<void>;
+  onUpdateCommuteOption: (optionId: string, data: Record<string, unknown>) => Promise<void>;
+  onDeleteCommuteOption: (optionId: string) => Promise<void>;
+  onAssignParticipant: (optionId: string, participantId: string) => Promise<void>;
+  onRemoveParticipant: (optionId: string, participantId: string) => Promise<void>;
+  onUpdateBreakTime: (segmentId: string, breakMinutes: number) => Promise<void>;
   loading?: boolean;
 }
 
@@ -61,41 +72,6 @@ const stageFilterOptions: { value: CardStage | "all"; label: string }[] = [
   { value: "chosen", label: "Chosen" },
   { value: "booked", label: "Booked" },
 ];
-
-const transportIcons: Record<TransportMode, React.ComponentType<{ className?: string }>> = {
-  walk: Footprints,
-  drive: Car,
-  bike: Bike,
-  train: Train,
-  bus: Bus,
-  boat: Ship,
-  plane: Plane,
-  other: Car,
-};
-
-function TravelTimeIndicator({
-  mode,
-  durationMinutes,
-}: {
-  mode?: TransportMode;
-  durationMinutes?: number;
-}) {
-  const Icon = transportIcons[mode ?? "drive"];
-  const label = durationMinutes
-    ? `~${durationMinutes} min ${mode ?? "drive"}`
-    : "~15 min drive";
-
-  return (
-    <div className="flex items-center gap-2 py-1 px-4">
-      <div className="flex-1 border-t border-dashed border-gray-300" />
-      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Icon className="h-3 w-3" />
-        <span>{label}</span>
-      </div>
-      <div className="flex-1 border-t border-dashed border-gray-300" />
-    </div>
-  );
-}
 
 function SkeletonCard() {
   return (
@@ -117,17 +93,103 @@ function SkeletonCard() {
   );
 }
 
+// Rev 7: Lodging indicator in day header
+function DayLodgingIndicator({
+  lodgingCards,
+  dateStr,
+}: {
+  lodgingCards: CardWithVoteStats[];
+  dateStr: string;
+}) {
+  if (lodgingCards.length === 0) return null;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex items-center gap-1 cursor-pointer">
+            {lodgingCards.map((card) => (
+              <span
+                key={card.id}
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-200 text-xs"
+              >
+                {getCardIcon(card.type, card.icon)}
+              </span>
+            ))}
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="max-w-xs p-3 space-y-2">
+          {lodgingCards.map((card) => {
+            const isCheckIn = card.date === dateStr;
+            const isCheckOut = card.end_date === dateStr;
+            return (
+              <div key={card.id} className="space-y-0.5">
+                <div className="flex items-center gap-1.5">
+                  <span>{getCardIcon(card.type, card.icon)}</span>
+                  <span className="font-medium text-sm">{card.title}</span>
+                </div>
+                {card.location && (
+                  <p className="text-xs text-muted-foreground">{card.location}</p>
+                )}
+                {card.budget > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    ${card.budget.toLocaleString()}
+                    {card.date && card.end_date ? " total" : "/night"}
+                  </p>
+                )}
+                <div className="flex gap-1">
+                  {isCheckIn && (
+                    <Badge variant="outline" className="text-[10px] bg-green-50 text-green-700">
+                      Check-in
+                    </Badge>
+                  )}
+                  {isCheckOut && (
+                    <Badge variant="outline" className="text-[10px] bg-red-50 text-red-700">
+                      Check-out
+                    </Badge>
+                  )}
+                  <Badge
+                    variant="outline"
+                    className="text-[10px]"
+                  >
+                    {card.stage}
+                  </Badge>
+                </div>
+              </div>
+            );
+          })}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 export function TimelineView({
   trip,
   cards,
   participants,
+  commuteSegments,
   onCardClick,
   onAddCard,
   onReorderCards,
+  onCreateOrUpdateSegment,
+  onAddCommuteOption,
+  onUpdateCommuteOption,
+  onDeleteCommuteOption,
+  onAssignParticipant,
+  onRemoveParticipant,
+  onUpdateBreakTime: _onUpdateBreakTime,
   loading = false,
 }: TimelineViewProps) {
+  // onUpdateBreakTime is available via the commute editor's onSave
+  void _onUpdateBreakTime;
   const [stageFilter, setStageFilter] = useState<CardStage | "all">("all");
   const [participantFilter, setParticipantFilter] = useState<string>("all");
+  const [editingSegment, setEditingSegment] = useState<{
+    segment: CommuteSegment | null;
+    fromCard: CardWithVoteStats;
+    toCard: CardWithVoteStats;
+  } | null>(null);
 
   // Generate array of dates from trip start to end
   const tripDates = useMemo(() => {
@@ -153,21 +215,31 @@ export function TimelineView({
     });
   }, [cards, stageFilter, participantFilter]);
 
-  // Group cards by date
+  // Rev 7: Separate accommodation cards from activity cards
+  const { activityCards, accommodationCards } = useMemo(() => {
+    const activities: CardWithVoteStats[] = [];
+    const accommodations: CardWithVoteStats[] = [];
+    for (const card of filteredCards) {
+      if (isAccommodationType(card.type)) {
+        accommodations.push(card);
+      } else {
+        activities.push(card);
+      }
+    }
+    return { activityCards: activities, accommodationCards: accommodations };
+  }, [filteredCards]);
+
+  // Group activity cards by date (excluding accommodation types)
   const cardsByDate = useMemo(() => {
     const grouped: Record<string, CardWithVoteStats[]> = {};
 
-    // Initialize all trip dates with empty arrays
     for (const date of tripDates) {
       const dateStr = format(date, "yyyy-MM-dd");
       grouped[dateStr] = [];
     }
-
-    // Add unscheduled bucket
     grouped["unscheduled"] = [];
 
-    // Sort cards into buckets
-    for (const card of filteredCards) {
+    for (const card of activityCards) {
       if (!card.date) {
         grouped["unscheduled"].push(card);
       } else {
@@ -175,19 +247,48 @@ export function TimelineView({
         if (grouped[cardDateStr]) {
           grouped[cardDateStr].push(card);
         } else {
-          // Card date outside trip range -- still show it under the nearest date bucket
           grouped[cardDateStr] = [card];
         }
       }
     }
 
-    // Sort each day's cards by sort_order
     for (const key of Object.keys(grouped)) {
       grouped[key].sort((a, b) => a.sort_order - b.sort_order);
     }
 
     return grouped;
-  }, [filteredCards, tripDates]);
+  }, [activityCards, tripDates]);
+
+  // Rev 7: Compute lodging cards per day
+  const lodgingByDate = useMemo(() => {
+    const result: Record<string, CardWithVoteStats[]> = {};
+    for (const date of tripDates) {
+      const dateStr = format(date, "yyyy-MM-dd");
+      result[dateStr] = accommodationCards.filter((card) => {
+        if (!card.date) return false;
+        const startDate = card.date;
+        const endDate = card.end_date ?? card.date;
+        return dateStr >= startDate && dateStr <= endDate;
+      });
+    }
+    return result;
+  }, [accommodationCards, tripDates]);
+
+  // Build segment lookup for quick access
+  const segmentLookup = useMemo(() => {
+    const lookup: Record<string, CommuteSegment> = {};
+    for (const seg of commuteSegments) {
+      lookup[`${seg.from_card_id}-${seg.to_card_id}`] = seg;
+    }
+    return lookup;
+  }, [commuteSegments]);
+
+  const getSegmentBetween = useCallback(
+    (fromCardId: string, toCardId: string): CommuteSegment | null => {
+      return segmentLookup[`${fromCardId}-${toCardId}`] ?? null;
+    },
+    [segmentLookup]
+  );
 
   // Calculate daily budget totals
   const dailyBudgets = useMemo(() => {
@@ -205,14 +306,13 @@ export function TimelineView({
     return values;
   }, [tripDates]);
 
-  // Handle drag and drop
+  // Rev 1: Handle drag and drop with auto time recalculation
   const handleDragEnd = useCallback(
     (result: DropResult) => {
       const { source, destination, draggableId } = result;
 
       if (!destination) return;
 
-      // Same position, no change
       if (
         source.droppableId === destination.droppableId &&
         source.index === destination.index
@@ -223,18 +323,15 @@ export function TimelineView({
       const sourceDateKey = source.droppableId;
       const destDateKey = destination.droppableId;
 
-      // Build the full list of cards in the destination droppable
       const destCards = [...(cardsByDate[destDateKey] ?? [])];
       const sourceCards =
         sourceDateKey === destDateKey
           ? destCards
           : [...(cardsByDate[sourceDateKey] ?? [])];
 
-      // Find the dragged card
       const draggedCard = sourceCards.find((c) => c.id === draggableId);
       if (!draggedCard) return;
 
-      // Remove from source
       if (sourceDateKey === destDateKey) {
         destCards.splice(source.index, 1);
         destCards.splice(destination.index, 0, draggedCard);
@@ -243,36 +340,71 @@ export function TimelineView({
         destCards.splice(destination.index, 0, draggedCard);
       }
 
-      // Build reorder payload for the destination list
-      const reordered: { id: string; sort_order: number; date?: string | null }[] =
+      // Rev 1: Recalculate start times for destination day
+      const recalculated = destDateKey !== "unscheduled"
+        ? recalculateStartTimes(destCards, commuteSegments)
+        : [];
+
+      const recalcMap = new Map(recalculated.map((r) => [r.id, r.start_time]));
+
+      const reordered: { id: string; sort_order: number; date?: string | null; start_time?: string }[] =
         destCards.map((card, index) => ({
           id: card.id,
           sort_order: index * 100,
           ...(sourceDateKey !== destDateKey && card.id === draggableId
             ? { date: destDateKey === "unscheduled" ? null : destDateKey }
             : {}),
+          ...(recalcMap.has(card.id) ? { start_time: recalcMap.get(card.id) } : {}),
         }));
 
-      // If cross-day move, also update source list sort orders
       if (sourceDateKey !== destDateKey) {
+        // Recalculate source day times too
+        const sourceRecalc = sourceDateKey !== "unscheduled"
+          ? recalculateStartTimes(sourceCards, commuteSegments)
+          : [];
+        const sourceRecalcMap = new Map(sourceRecalc.map((r) => [r.id, r.start_time]));
+
         sourceCards.forEach((card, index) => {
           reordered.push({
             id: card.id,
             sort_order: index * 100,
+            ...(sourceRecalcMap.has(card.id) ? { start_time: sourceRecalcMap.get(card.id) } : {}),
           });
         });
       }
 
       onReorderCards(reordered);
     },
-    [cardsByDate, onReorderCards]
+    [cardsByDate, onReorderCards, commuteSegments]
+  );
+
+  // Commute editor handlers
+  const handleOpenCommuteEditor = useCallback(
+    (fromCard: CardWithVoteStats, toCard: CardWithVoteStats) => {
+      const segment = getSegmentBetween(fromCard.id, toCard.id);
+      setEditingSegment({ segment, fromCard, toCard });
+    },
+    [getSegmentBetween]
+  );
+
+  const handleSaveSegment = useCallback(
+    async (data: { breakMinutes: number }) => {
+      if (!editingSegment) return;
+      const { fromCard, toCard } = editingSegment;
+      const segment = await onCreateOrUpdateSegment(fromCard.id, toCard.id, data.breakMinutes);
+      if (segment) {
+        setEditingSegment((prev) =>
+          prev ? { ...prev, segment } : null
+        );
+      }
+    },
+    [editingSegment, onCreateOrUpdateSegment]
   );
 
   // Loading state
   if (loading) {
     return (
       <div className="space-y-6">
-        {/* Skeleton filter bar */}
         <div className="flex items-center gap-2">
           <Skeleton className="h-9 w-16" />
           <Skeleton className="h-9 w-24" />
@@ -283,8 +415,6 @@ export function TimelineView({
           <Skeleton className="h-9 w-40" />
           <Skeleton className="h-9 w-28" />
         </div>
-
-        {/* Skeleton day sections */}
         {[1, 2, 3].map((i) => (
           <div key={i} className="space-y-3">
             <div className="flex items-center gap-3">
@@ -302,7 +432,6 @@ export function TimelineView({
     );
   }
 
-  // Empty state (no cards at all)
   const totalCards = cards.length;
   const hasNoCards = totalCards === 0;
 
@@ -312,7 +441,6 @@ export function TimelineView({
       <div className="flex flex-wrap items-center gap-2">
         <Filter className="h-4 w-4 text-muted-foreground" />
 
-        {/* Stage filter buttons */}
         {stageFilterOptions.map((option) => (
           <Button
             key={option.value}
@@ -327,7 +455,6 @@ export function TimelineView({
 
         <div className="w-px h-6 bg-border mx-1" />
 
-        {/* Participant filter */}
         <Select
           value={participantFilter}
           onValueChange={setParticipantFilter}
@@ -347,8 +474,6 @@ export function TimelineView({
 
         <div className="flex-1" />
 
-        {/* AI fill gaps button */}
-        {/* TODO Phase 2: AI-powered suggestions */}
         <Button
           variant="outline"
           size="sm"
@@ -385,6 +510,7 @@ export function TimelineView({
               const dateStr = format(date, "yyyy-MM-dd");
               const dayCards = cardsByDate[dateStr] ?? [];
               const dayBudget = dailyBudgets[dateStr] ?? 0;
+              const dayLodging = lodgingByDate[dateStr] ?? [];
 
               return (
                 <AccordionItem
@@ -407,6 +533,13 @@ export function TimelineView({
                           <DollarSign className="h-3 w-3" />
                           {dayBudget.toLocaleString()}
                         </span>
+                      )}
+                      {/* Rev 7: Lodging indicator */}
+                      {dayLodging.length > 0 && (
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <Home className="h-3.5 w-3.5 text-indigo-500" />
+                          <DayLodgingIndicator lodgingCards={dayLodging} dateStr={dateStr} />
+                        </div>
                       )}
                     </div>
                   </AccordionTrigger>
@@ -437,11 +570,19 @@ export function TimelineView({
                             >
                               {(draggableProvided, draggableSnapshot) => (
                                 <div>
-                                  {/* Travel time indicator between cards */}
+                                  {/* Rev 2/3: Commute segment indicator between cards */}
                                   {index > 0 && (
-                                    <TravelTimeIndicator
-                                      mode={undefined}
-                                      durationMinutes={undefined}
+                                    <CommuteSegmentIndicator
+                                      segment={getSegmentBetween(
+                                        dayCards[index - 1].id,
+                                        card.id
+                                      )}
+                                      onEdit={() =>
+                                        handleOpenCommuteEditor(
+                                          dayCards[index - 1],
+                                          card
+                                        )
+                                      }
                                     />
                                   )}
                                   <div
@@ -474,7 +615,6 @@ export function TimelineView({
                       )}
                     </Droppable>
 
-                    {/* Add card button */}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -567,7 +707,6 @@ export function TimelineView({
                   )}
                 </Droppable>
 
-                {/* Add card button for unscheduled */}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -581,6 +720,51 @@ export function TimelineView({
             </AccordionItem>
           </Accordion>
         </DragDropContext>
+      )}
+
+      {/* Commute Editor Dialog */}
+      {editingSegment && (
+        <CommuteEditor
+          open={!!editingSegment}
+          onOpenChange={(open) => {
+            if (!open) setEditingSegment(null);
+          }}
+          segment={editingSegment.segment}
+          fromCardTitle={editingSegment.fromCard.title}
+          toCardTitle={editingSegment.toCard.title}
+          participants={participants}
+          onSave={handleSaveSegment}
+          onAddOption={async (data) => {
+            if (!editingSegment.segment) {
+              // Create segment first
+              const seg = await onCreateOrUpdateSegment(
+                editingSegment.fromCard.id,
+                editingSegment.toCard.id,
+                0
+              );
+              if (seg) {
+                await onAddCommuteOption(seg.id, data);
+                setEditingSegment((prev) =>
+                  prev ? { ...prev, segment: seg } : null
+                );
+              }
+            } else {
+              await onAddCommuteOption(editingSegment.segment.id, data);
+            }
+          }}
+          onUpdateOption={async (optionId, data) => {
+            await onUpdateCommuteOption(optionId, data);
+          }}
+          onDeleteOption={async (optionId) => {
+            await onDeleteCommuteOption(optionId);
+          }}
+          onAssignParticipant={async (optionId, participantId) => {
+            await onAssignParticipant(optionId, participantId);
+          }}
+          onRemoveParticipant={async (optionId, participantId) => {
+            await onRemoveParticipant(optionId, participantId);
+          }}
+        />
       )}
     </div>
   );

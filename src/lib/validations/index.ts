@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+const allCardTypes = [
+  "activity", "restaurant", "food", "event", "concert",
+  "outdoor", "lodging", "rental", "flight", "shopping",
+  "sightseeing", "nightlife", "spa", "sports", "museum", "beach",
+] as const;
+
+const allTransportModes = [
+  "walk", "drive", "bike", "train", "bus", "boat", "plane", "uber", "taxi", "other",
+] as const;
+
 export const createTripSchema = z.object({
   name: z.string().min(1, "Trip name is required").max(100),
   destination: z.string().min(1, "Destination is required").max(200),
@@ -19,7 +29,7 @@ export const joinTripSchema = z.object({
 
 export const createCardSchema = z.object({
   trip_id: z.string().uuid(),
-  type: z.enum(["activity", "restaurant", "event", "lodging", "rental"]).default("activity"),
+  type: z.enum(allCardTypes).default("activity"),
   title: z.string().min(1, "Title is required").max(200),
   description: z.string().max(2000).default(""),
   date: z.string().nullable().default(null),
@@ -33,6 +43,8 @@ export const createCardSchema = z.object({
   is_date_locked: z.boolean().default(false),
   is_multi_day: z.boolean().default(false),
   end_date: z.string().nullable().default(null),
+  icon: z.string().max(10).nullable().default(null),
+  available_dates: z.array(z.string()).optional(),
   created_by: z.string().uuid().nullable().default(null),
   sort_order: z.coerce.number().default(0),
 });
@@ -69,6 +81,12 @@ export const createExpenseSchema = z.object({
     participant_id: z.string().uuid(),
     amount_owed: z.coerce.number().min(0),
   })).optional(),
+  line_items: z.array(z.object({
+    description: z.string().max(200),
+    amount: z.coerce.number().min(0),
+    item_type: z.enum(["per_person", "communal"]).default("communal"),
+  })).optional(),
+  participant_ids: z.array(z.string().uuid()).optional(),
 });
 
 export const shiftDatesSchema = z.object({
@@ -84,10 +102,30 @@ export const moveCardSchema = z.object({
 export const transportOverrideSchema = z.object({
   card_id: z.string().uuid(),
   from_card_id: z.string().uuid(),
-  mode: z.enum(["walk", "drive", "bike", "train", "bus", "boat", "plane", "other"]).default("drive"),
+  mode: z.enum(allTransportModes).default("drive"),
   duration_minutes: z.coerce.number().min(0).default(15),
   notes: z.string().max(500).default(""),
 });
+
+// Commute segments (Rev 2, 3)
+export const createCommuteSegmentSchema = z.object({
+  from_card_id: z.string().uuid(),
+  to_card_id: z.string().uuid(),
+  break_minutes: z.coerce.number().min(0).default(0),
+});
+
+export const createCommuteOptionSchema = z.object({
+  segment_id: z.string().uuid(),
+  mode: z.enum(allTransportModes).default("drive"),
+  label: z.string().max(100).default(""),
+  duration_minutes: z.coerce.number().min(0).default(15),
+  cost: z.coerce.number().min(0).default(0),
+  notes: z.string().max(500).default(""),
+  confirmation_number: z.string().max(100).default(""),
+  detail_fields: z.record(z.string(), z.string()).default({}),
+});
+
+export const updateCommuteOptionSchema = createCommuteOptionSchema.partial().omit({ segment_id: true });
 
 export type CreateTripInput = z.infer<typeof createTripSchema>;
 export type UpdateTripInput = z.infer<typeof updateTripSchema>;
@@ -100,3 +138,5 @@ export type AddReactionInput = z.infer<typeof addReactionSchema>;
 export type CreateExpenseInput = z.infer<typeof createExpenseSchema>;
 export type ShiftDatesInput = z.infer<typeof shiftDatesSchema>;
 export type MoveCardInput = z.infer<typeof moveCardSchema>;
+export type CreateCommuteSegmentInput = z.infer<typeof createCommuteSegmentSchema>;
+export type CreateCommuteOptionInput = z.infer<typeof createCommuteOptionSchema>;
