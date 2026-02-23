@@ -14,8 +14,25 @@ export async function GET() {
     const supabase = getSupabase();
 
     // ============================================================
-    // 1. Create the trip
+    // 1. Create the trip (or return existing demo trip)
     // ============================================================
+
+    // Check if a demo trip already exists with this invite code
+    const { data: existingTrip } = await supabase
+      .from("trips")
+      .select("id")
+      .eq("invite_code", "TNDEMO26")
+      .single();
+
+    if (existingTrip) {
+      // Demo was already seeded — just redirect to it
+      return NextResponse.json({
+        success: true,
+        trip_id: existingTrip.id,
+        redirect: `/trip/${existingTrip.id}`,
+      });
+    }
+
     const { data: trip, error: tripError } = await supabase
       .from("trips")
       .insert({
