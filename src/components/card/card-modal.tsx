@@ -163,21 +163,45 @@ export function CardModal({
   const { participant: currentParticipant, isOrganizer } = useParticipant();
 
   const [activeTab, setActiveTab] = useState("details");
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Reset tab when modal opens with a new card
   useEffect(() => {
     if (isOpen) {
       setActiveTab("details");
+      setConfirmDelete(false);
     }
   }, [isOpen, card?.id]);
+
+  const handleHeaderDelete = async () => {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    if (onDelete) await onDelete();
+  };
 
   if (!card) return null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) { onClose(); setConfirmDelete(false); } }}>
       <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 pt-6 pb-2">
-          <DialogTitle className="text-xl">{card.title}</DialogTitle>
+          <div className="flex items-start justify-between gap-2">
+            <DialogTitle className="text-xl">{card.title}</DialogTitle>
+            {onDelete && (
+              <Button
+                variant={confirmDelete ? "destructive" : "ghost"}
+                size="sm"
+                className="shrink-0 mt-0.5"
+                onClick={handleHeaderDelete}
+                onBlur={() => setConfirmDelete(false)}
+              >
+                <Trash2 className="h-4 w-4" />
+                {confirmDelete && <span className="ml-1.5">Confirm?</span>}
+              </Button>
+            )}
+          </div>
           <DialogDescription className="sr-only">
             Card details for {card.title}
           </DialogDescription>
