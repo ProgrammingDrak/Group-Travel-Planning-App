@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 // Using Dialog for the confirmation dialog as well
-import { Loader2, AlertTriangle } from "lucide-react";
+import { Loader2, AlertTriangle, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import { LocationAutocomplete } from "@/components/ui/location-autocomplete";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { ExpenseItemBuilder, type ExpenseItem } from "@/components/ui/expense-item-builder";
@@ -42,6 +42,7 @@ interface AddCardDialogProps {
   tripId: string;
   tripStartDate?: string;
   tripEndDate?: string;
+  tripDestination?: string;
 }
 
 const cardTypes: { value: CardType; label: string; emoji: string }[] = [
@@ -70,6 +71,7 @@ export function AddCardDialog({
   defaultDate,
   tripStartDate,
   tripEndDate,
+  tripDestination,
 }: AddCardDialogProps) {
   const [title, setTitle] = useState("");
   const [type, setType] = useState<CardType>("activity");
@@ -85,6 +87,11 @@ export function AddCardDialog({
   // Rev 9: Out-of-range date confirmation
   const [showDateConfirm, setShowDateConfirm] = useState(false);
   const [pendingSubmit, setPendingSubmit] = useState(false);
+  // AI assist
+  const [aiExpanded, setAiExpanded] = useState(false);
+  const [aiInput, setAiInput] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   const isDateOutOfRange = () => {
     if (!date || !tripStartDate || !tripEndDate) return false;
@@ -137,6 +144,9 @@ export function AddCardDialog({
       setSuggestedArrival(false);
       setSuggestedArrivalNotes("");
       setPendingSubmit(false);
+      setAiInput("");
+      setAiError(null);
+      setAiExpanded(false);
       onClose();
     } finally {
       setSubmitting(false);
@@ -147,6 +157,46 @@ export function AddCardDialog({
     setShowDateConfirm(false);
     setPendingSubmit(true);
     await handleSubmit();
+  };
+
+  const handleAiGenerate = async () => {
+    if (!aiInput.trim()) return;
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const res = await fetch("/api/cards/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          input: aiInput,
+          tripStartDate,
+          tripEndDate,
+          destination: tripDestination,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setAiError(json.error || "Failed to parse input");
+        return;
+      }
+      const d = json.data;
+      if (d.title) setTitle(d.title);
+      if (d.type) setType(d.type as CardType);
+      if (d.description) setDescription(d.description);
+      if (d.date) setDate(d.date);
+      if (d.start_time) setStartTime(d.start_time);
+      if (d.location) setLocation(d.location);
+      if (d.address) setAddress(d.address);
+      if (d.budget > 0) {
+        setExpenseItems([{ id: "ai-1", label: "Estimated cost", amount: d.budget, type: "communal" }]);
+      }
+      // Collapse AI panel after successful fill
+      setAiExpanded(false);
+    } catch {
+      setAiError("Something went wrong. Please try again.");
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const typeInfo = getCardTypeInfo(type);
@@ -162,6 +212,61 @@ export function AddCardDialog({
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* AI Assist panel */}
+            <div className="rounded-lg border border-primary/20 bg-primary/5 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setAiExpanded((v) => !v)}
+                className="w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="h-4 w-4" />
+                  AI Assist — describe it or paste a link
+                </span>
+                {aiExpanded ? (
+                  <ChevronUp className="h-4 w-4 opacity-60" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 opacity-60" />
+                )}
+              </button>
+              {aiExpanded && (
+                <div className="px-3 pb-3 space-y-2 border-t border-primary/10">
+                  <Textarea
+                    value={aiInput}
+                    onChange={(e) => setAiInput(e.target.value)}
+                    placeholder={`Describe what you want to do, or paste a link to an event, Google Maps place, or website...\n\nExamples:\n• "Dinner at a rooftop Italian restaurant Friday around 7pm, ~$60pp"\n• "https://maps.google.com/?q=Eiffel+Tower"\n• "Half-day cooking class, meets at 10am, includes lunch"`}
+                    rows={4}
+                    className="text-sm resize-none"
+                  />
+                  {aiError && (
+                    <p className="text-xs text-destructive">{aiError}</p>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleAiGenerate}
+                    disabled={aiLoading || !aiInput.trim()}
+                    className="w-full"
+                  >
+                    {aiLoading ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                        Fill in details with AI
+                      </>
+                    )}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    AI will pre-fill the fields below — review and edit before saving.
+                  </p>
+                </div>
+              )}
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="card-title">Title *</Label>
               <Input

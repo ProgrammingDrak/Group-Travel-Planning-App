@@ -509,6 +509,7 @@ export default function TripPage() {
           tripId={tripId}
           tripStartDate={trip.start_date}
           tripEndDate={trip.end_date}
+          tripDestination={trip.destination}
         />
 
         {/* Activity Library Sheet */}
