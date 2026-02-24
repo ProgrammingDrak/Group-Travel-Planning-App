@@ -50,7 +50,7 @@ Important fields to gather (roughly in priority order):
 - budget (estimated cost per person)
 - description (useful notes, what to expect, tips)
 
-ALWAYS respond with valid JSON in this exact format:
+CRITICAL: You MUST respond with ONLY a valid JSON object. No markdown, no code fences, no explanation text before or after. Your entire response must be parseable by JSON.parse(). Use this exact format:
 {
   "message": "A friendly conversational response. Summarize what you understood, ask follow-up questions for missing info, or confirm when you have everything.",
   "data": {
@@ -90,12 +90,24 @@ Rules:
     });
 
     const text = response.content[0].type === "text" ? response.content[0].text.trim() : "";
-    const jsonText = text.replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/, "").trim();
 
-    let parsed: { message: string; data: Record<string, unknown>; ready: boolean };
-    try {
-      parsed = JSON.parse(jsonText);
-    } catch {
+    // Try several extraction strategies in order
+    let parsed: { message: string; data: Record<string, unknown>; ready: boolean } | null = null;
+
+    // 1. Strip markdown code fences and try direct parse
+    const stripped = text.replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/, "").trim();
+    try { parsed = JSON.parse(stripped); } catch { /* continue */ }
+
+    // 2. Find first { ... } block in the text
+    if (!parsed) {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) {
+        try { parsed = JSON.parse(match[0]); } catch { /* continue */ }
+      }
+    }
+
+    if (!parsed) {
+      console.error("Failed to parse AI response:", text);
       return NextResponse.json({ error: "AI returned invalid response. Please try again." }, { status: 500 });
     }
 
