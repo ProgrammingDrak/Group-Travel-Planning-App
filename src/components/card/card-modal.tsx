@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { formatDistanceToNow, format, parseISO, eachDayOfInterval } from "date-fns";
 import {
   Trash2,
@@ -164,6 +164,8 @@ export function CardModal({
 
   const [activeTab, setActiveTab] = useState("details");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [detailsSaving, setDetailsSaving] = useState(false);
+  const saveDetailsRef = useRef<(() => Promise<void>) | null>(null);
 
   // Reset tab when modal opens with a new card
   useEffect(() => {
@@ -189,18 +191,35 @@ export function CardModal({
         <DialogHeader className="px-6 pt-6 pb-2">
           <div className="flex items-start justify-between gap-2">
             <DialogTitle className="text-xl">{card.title}</DialogTitle>
-            {onDelete && (
-              <Button
-                variant={confirmDelete ? "destructive" : "ghost"}
-                size="sm"
-                className="shrink-0 mt-0.5"
-                onClick={handleHeaderDelete}
-                onBlur={() => setConfirmDelete(false)}
-              >
-                <Trash2 className="h-4 w-4" />
-                {confirmDelete && <span className="ml-1.5">Confirm?</span>}
-              </Button>
-            )}
+            <div className="flex items-center gap-2 shrink-0 mt-0.5">
+              {activeTab === "details" && (
+                <Button
+                  size="sm"
+                  onClick={() => saveDetailsRef.current?.()}
+                  disabled={detailsSaving}
+                >
+                  {detailsSaving ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save Changes"
+                  )}
+                </Button>
+              )}
+              {onDelete && (
+                <Button
+                  variant={confirmDelete ? "destructive" : "ghost"}
+                  size="sm"
+                  onClick={handleHeaderDelete}
+                  onBlur={() => setConfirmDelete(false)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {confirmDelete && <span className="ml-1.5">Confirm?</span>}
+                </Button>
+              )}
+            </div>
           </div>
           <DialogDescription className="sr-only">
             Card details for {card.title}
@@ -246,6 +265,8 @@ export function CardModal({
                   onClone={onClone}
                   tripStartDate={tripStartDate}
                   tripEndDate={tripEndDate}
+                  onRegisterSave={(fn) => { saveDetailsRef.current = fn; }}
+                  onSavingChange={setDetailsSaving}
                 />
               </TabsContent>
 
@@ -304,9 +325,11 @@ interface DetailsTabProps {
   onClone?: (cardData: Partial<Card>, dates: string[]) => Promise<void>;
   tripStartDate?: string;
   tripEndDate?: string;
+  onRegisterSave?: (fn: (() => Promise<void>) | null) => void;
+  onSavingChange?: (saving: boolean) => void;
 }
 
-function DetailsTab({ card, isOrganizer, onUpdate, onDelete, onClone, tripStartDate, tripEndDate }: DetailsTabProps) {
+function DetailsTab({ card, isOrganizer, onUpdate, onDelete, onClone, tripStartDate, tripEndDate, onRegisterSave, onSavingChange }: DetailsTabProps) {
   const [title, setTitle] = useState(card.title);
   const [description, setDescription] = useState(card.description);
   const [date, setDate] = useState(card.date ?? "");
@@ -398,6 +421,21 @@ function DetailsTab({ card, isOrganizer, onUpdate, onDelete, onClone, tripStartD
       setSaving(false);
     }
   };
+
+  // Keep a ref that always points to the latest handleSave (avoids stale closure)
+  const handleSaveRef = useRef(handleSave);
+  useEffect(() => { handleSaveRef.current = handleSave; });
+
+  // Register handleSave with the parent modal header
+  useEffect(() => {
+    onRegisterSave?.(() => handleSaveRef.current());
+    return () => onRegisterSave?.(null);
+  }, [onRegisterSave]);
+
+  // Propagate saving state to parent modal header
+  useEffect(() => {
+    onSavingChange?.(saving);
+  }, [saving, onSavingChange]);
 
   const handleDelete = async () => {
     if (!confirmDelete) {
