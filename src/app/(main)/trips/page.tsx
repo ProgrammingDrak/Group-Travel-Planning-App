@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { format, parseISO, isPast, isFuture, isToday } from "date-fns";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -26,6 +27,10 @@ import {
   Users,
   ArrowLeft,
   Clock,
+  Trash2,
+  Check,
+  X,
+  Pencil,
 } from "lucide-react";
 
 interface TripWithCount {
@@ -63,6 +68,30 @@ export default function TripsPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+  }, []);
+
+  const handleDeleteTrip = useCallback(async (tripId: string) => {
+    const res = await fetch(`/api/trips/${tripId}`, { method: "DELETE" });
+    if (res.ok) {
+      setTrips((prev) => prev.filter((t) => t.id !== tripId));
+      // Clean up localStorage participant session for this trip
+      try {
+        localStorage.removeItem(`tripsync_participant_${tripId}`);
+      } catch { /* ignore */ }
+    }
+  }, []);
+
+  const handleRenameTrip = useCallback(async (tripId: string, newName: string) => {
+    const res = await fetch(`/api/trips/${tripId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newName }),
+    });
+    if (res.ok) {
+      setTrips((prev) =>
+        prev.map((t) => (t.id === tripId ? { ...t, name: newName } : t))
+      );
+    }
   }, []);
 
   const { upcoming, past } = useMemo(() => {
@@ -201,6 +230,8 @@ export default function TripsPage() {
                       trip={trip}
                       isCurrent={isCurrentTrip(trip)}
                       daysUntil={getDaysUntil(trip.start_date)}
+                      onDelete={handleDeleteTrip}
+                      onRename={handleRenameTrip}
                     />
                   ))}
                 </div>
@@ -221,6 +252,8 @@ export default function TripsPage() {
                       trip={trip}
                       isPast
                       daysUntil={getDaysUntil(trip.start_date)}
+                      onDelete={handleDeleteTrip}
+                      onRename={handleRenameTrip}
                     />
                   ))}
                 </div>
@@ -236,35 +269,135 @@ export default function TripsPage() {
 function TripCard({
   trip,
   isCurrent = false,
-  isPast = false,
+  isPast: isPastTrip = false,
   daysUntil,
+  onDelete,
+  onRename,
 }: {
   trip: TripWithCount;
   isCurrent?: boolean;
   isPast?: boolean;
   daysUntil: string;
+  onDelete: (tripId: string) => Promise<void>;
+  onRename: (tripId: string, newName: string) => Promise<void>;
 }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(trip.name);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleRenameSubmit = async () => {
+    const trimmed = editName.trim();
+    if (!trimmed || trimmed === trip.name) {
+      setEditName(trip.name);
+      setIsEditing(false);
+      return;
+    }
+    await onRename(trip.id, trimmed);
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleRenameSubmit();
+    } else if (e.key === "Escape") {
+      setEditName(trip.name);
+      setIsEditing(false);
+    }
+  };
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    setDeleting(true);
+    await onDelete(trip.id);
+  };
+
+  const handleCancelDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setConfirmDelete(false);
+  };
+
   return (
-    <Link href={`/trip/${trip.id}`}>
-      <Card
-        className={`hover:shadow-md transition-shadow cursor-pointer ${
-          isCurrent ? "border-primary border-2" : ""
-        } ${isPast ? "opacity-70" : ""}`}
-      >
-        <CardContent className="flex items-center gap-4 p-4">
-          <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-            <Plane className="h-6 w-6 text-primary" />
+    <Card
+      className={`hover:shadow-md transition-shadow ${
+        isCurrent ? "border-primary border-2" : ""
+      } ${isPastTrip ? "opacity-70" : ""}`}
+    >
+      <CardContent className="flex items-center gap-4 p-4">
+        <Link
+          href={`/trip/${trip.id}`}
+          className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0"
+        >
+          <Plane className="h-6 w-6 text-primary" />
+        </Link>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            {isEditing ? (
+              <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  onBlur={handleRenameSubmit}
+                  className="h-7 text-sm font-semibold px-2 w-48"
+                  autoFocus
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleRenameSubmit();
+                  }}
+                >
+                  <Check className="h-3.5 w-3.5 text-green-600" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setEditName(trip.name);
+                    setIsEditing(false);
+                  }}
+                >
+                  <X className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+              </div>
+            ) : (
+              <button
+                className="font-semibold truncate text-left hover:underline decoration-dashed underline-offset-2 group flex items-center gap-1.5 cursor-pointer"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setEditName(trip.name);
+                  setIsEditing(true);
+                }}
+                title="Click to rename"
+              >
+                {trip.name}
+                <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
+            )}
+            {isCurrent && !isEditing && (
+              <Badge className="bg-primary text-primary-foreground text-[10px]">
+                Active Now
+              </Badge>
+            )}
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="font-semibold truncate">{trip.name}</h3>
-              {isCurrent && (
-                <Badge className="bg-primary text-primary-foreground text-[10px]">
-                  Active Now
-                </Badge>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground mt-1">
+          <Link href={`/trip/${trip.id}`}>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground mt-1 cursor-pointer">
               <span className="flex items-center gap-1">
                 <MapPin className="h-3 w-3" />
                 {trip.destination}
@@ -285,23 +418,55 @@ function TripCard({
                 {trip.participant_count}
               </span>
             </div>
-          </div>
-          <div className="text-right flex-shrink-0">
-            <span
-              className={`text-xs font-medium ${
-                isCurrent
-                  ? "text-primary"
-                  : isPast
-                  ? "text-muted-foreground"
-                  : "text-foreground"
-              }`}
+          </Link>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span
+            className={`text-xs font-medium ${
+              isCurrent
+                ? "text-primary"
+                : isPastTrip
+                ? "text-muted-foreground"
+                : "text-foreground"
+            }`}
+          >
+            {daysUntil}
+          </span>
+          {confirmDelete ? (
+            <div className="flex items-center gap-1">
+              <Button
+                variant="destructive"
+                size="icon"
+                className="h-7 w-7"
+                onClick={handleDelete}
+                disabled={deleting}
+                title="Confirm delete"
+              >
+                <Check className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-7 w-7"
+                onClick={handleCancelDelete}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+              onClick={handleDelete}
+              title="Delete trip"
             >
-              {daysUntil}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-    </Link>
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
