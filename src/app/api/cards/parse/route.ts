@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
 const allCardTypes = [
   "activity", "restaurant", "food", "event", "concert",
   "outdoor", "lodging", "rental", "flight", "shopping",
@@ -10,19 +8,21 @@ const allCardTypes = [
 ];
 
 export async function POST(request: NextRequest) {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+
+  if (!apiKey || apiKey === "your_anthropic_api_key_here") {
     return NextResponse.json(
-      { error: "AI features not configured. Add ANTHROPIC_API_KEY to your environment." },
+      { error: "AI features not configured. Add ANTHROPIC_API_KEY to your environment and restart the server." },
       { status: 503 }
     );
   }
 
   try {
     const body = await request.json();
-    const { input, tripStartDate, tripEndDate, destination } = body;
+    const { messages, tripStartDate, tripEndDate, destination } = body;
 
-    if (!input || typeof input !== "string" || input.trim().length === 0) {
-      return NextResponse.json({ error: "Input is required" }, { status: 400 });
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return NextResponse.json({ error: "messages array is required" }, { status: 400 });
     }
 
     const tripContext = [
@@ -32,72 +32,102 @@ export async function POST(request: NextRequest) {
       .filter(Boolean)
       .join(". ");
 
-    const prompt = `You are helping plan a trip. Extract structured activity/event details from the user's input.
-The user may provide:
-- A natural language description (e.g. "dinner at a nice Italian place on Thursday around 7pm, budget $50pp")
-- A URL to an event, restaurant, Google Maps result, or any website
-- A mix of both
+    const systemPrompt = `You are a helpful trip planning assistant. Your job is to help users add activities and events to their travel itinerary.
 
-${tripContext ? `Context: ${tripContext}` : ""}
+${tripContext ? `Trip context: ${tripContext}` : ""}
 
-User input:
-${input.trim()}
+When the user describes an activity, you should:
+1. Extract as much structured information as you can
+2. Ask friendly, specific follow-up questions for any important missing details — but only ask about things that are genuinely missing and useful (don't ask about everything at once, focus on the most important gaps)
+3. When you have enough information, finalize the card
 
-Respond with a single JSON object (no markdown, no explanation) with these fields:
+Important fields to gather (roughly in priority order):
+- title (what the activity is called)
+- type (category)
+- date (when)
+- start_time (what time)
+- location (where)
+- budget (estimated cost per person)
+- description (useful notes, what to expect, tips)
+
+ALWAYS respond with valid JSON in this exact format:
 {
-  "title": "Short, clear activity name (required)",
-  "type": "One of: ${allCardTypes.join(", ")}",
-  "description": "Relevant notes, details, what to expect (2-3 sentences max, empty string if nothing useful)",
-  "date": "YYYY-MM-DD if a specific date can be inferred, otherwise null",
-  "start_time": "HH:MM in 24h format if a time is mentioned, otherwise null",
-  "location": "Venue/place name only (not full address)",
-  "address": "Full street address if available, otherwise empty string",
-  "budget": "Estimated cost per person as a number (0 if unknown)",
-  "duration_minutes": "Estimated duration in minutes (0 if unknown)"
+  "message": "A friendly conversational response. Summarize what you understood, ask follow-up questions for missing info, or confirm when you have everything.",
+  "data": {
+    "title": "string or empty string if unknown",
+    "type": "one of: ${allCardTypes.join(", ")}",
+    "description": "string, empty if unknown",
+    "date": "YYYY-MM-DD or null",
+    "start_time": "HH:MM 24h or null",
+    "location": "venue name or empty string",
+    "address": "full address or empty string",
+    "budget": 0,
+    "duration_minutes": 0
+  },
+  "ready": false
 }
 
-Rules:
-- If given a URL, extract details from the URL itself (domain, path, query params) — you cannot browse the web, so infer what you can from the URL text
-- For Google Maps URLs, extract the place name from the URL query parameters
-- Keep title concise (under 60 chars)
-- Pick the most fitting type from the list
-- Only include date if clearly stated or strongly implied; do not guess randomly
-- budget should be per-person cost estimate`;
+Set "ready" to true only when you have enough information that the card would be genuinely useful (at minimum a title and at least 2-3 other fields filled in).
 
-    const message = await client.messages.create({
+Rules:
+- If given a URL, infer details from the URL text itself — you cannot browse the web
+- Keep title concise (under 60 chars)
+- Ask at most 2-3 questions at a time, not a laundry list
+- Be conversational and encouraging, not robotic
+- budget is per-person cost estimate as a number
+- No markdown in your message field, plain text only`;
+
+    const client = new Anthropic({ apiKey });
+
+    const response = await client.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 512,
-      messages: [{ role: "user", content: prompt }],
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: messages.map((m: { role: string; content: string }) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      })),
     });
 
-    const text = message.content[0].type === "text" ? message.content[0].text.trim() : "";
-
-    // Strip markdown code fences if present
+    const text = response.content[0].type === "text" ? response.content[0].text.trim() : "";
     const jsonText = text.replace(/^```(?:json)?\n?/i, "").replace(/\n?```$/, "").trim();
 
-    let parsed: Record<string, unknown>;
+    let parsed: { message: string; data: Record<string, unknown>; ready: boolean };
     try {
       parsed = JSON.parse(jsonText);
     } catch {
       return NextResponse.json({ error: "AI returned invalid response. Please try again." }, { status: 500 });
     }
 
-    // Sanitize and type-check the response
+    const d = parsed.data || {};
     const result = {
-      title: typeof parsed.title === "string" ? parsed.title.slice(0, 200) : "",
-      type: allCardTypes.includes(parsed.type as string) ? parsed.type : "activity",
-      description: typeof parsed.description === "string" ? parsed.description.slice(0, 2000) : "",
-      date: typeof parsed.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(parsed.date) ? parsed.date : null,
-      start_time: typeof parsed.start_time === "string" && /^\d{2}:\d{2}$/.test(parsed.start_time) ? parsed.start_time : null,
-      location: typeof parsed.location === "string" ? parsed.location.slice(0, 200) : "",
-      address: typeof parsed.address === "string" ? parsed.address.slice(0, 500) : "",
-      budget: typeof parsed.budget === "number" && parsed.budget >= 0 ? parsed.budget : 0,
-      duration_minutes: typeof parsed.duration_minutes === "number" && parsed.duration_minutes >= 0 ? parsed.duration_minutes : 0,
+      title: typeof d.title === "string" ? d.title.slice(0, 200) : "",
+      type: allCardTypes.includes(d.type as string) ? d.type : "activity",
+      description: typeof d.description === "string" ? d.description.slice(0, 2000) : "",
+      date: typeof d.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d.date) ? d.date : null,
+      start_time: typeof d.start_time === "string" && /^\d{2}:\d{2}$/.test(d.start_time) ? d.start_time : null,
+      location: typeof d.location === "string" ? d.location.slice(0, 200) : "",
+      address: typeof d.address === "string" ? d.address.slice(0, 500) : "",
+      budget: typeof d.budget === "number" && d.budget >= 0 ? d.budget : 0,
+      duration_minutes: typeof d.duration_minutes === "number" && d.duration_minutes >= 0 ? d.duration_minutes : 0,
     };
 
-    return NextResponse.json({ data: result });
+    return NextResponse.json({
+      message: typeof parsed.message === "string" ? parsed.message : "",
+      data: result,
+      ready: parsed.ready === true,
+    });
   } catch (error) {
-    console.error("Error parsing card with AI:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Error parsing card with AI:", message);
+
+    if (message.includes("401") || message.includes("authentication") || message.includes("invalid x-api-key")) {
+      return NextResponse.json({ error: "Invalid API key. Check your ANTHROPIC_API_KEY." }, { status: 500 });
+    }
+    if (message.includes("credit") || message.includes("balance")) {
+      return NextResponse.json({ error: "Anthropic API credit balance is too low. Add credits at console.anthropic.com." }, { status: 500 });
+    }
+
+    return NextResponse.json({ error: `AI error: ${message}` }, { status: 500 });
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -92,6 +92,15 @@ export function AddCardDialog({
   const [aiInput, setAiInput] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [aiMessages, setAiMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [aiReady, setAiReady] = useState(false);
+  const aiChatRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (aiChatRef.current) {
+      aiChatRef.current.scrollTop = aiChatRef.current.scrollHeight;
+    }
+  }, [aiMessages, aiLoading]);
 
   const isDateOutOfRange = () => {
     if (!date || !tripStartDate || !tripEndDate) return false;
@@ -147,6 +156,8 @@ export function AddCardDialog({
       setAiInput("");
       setAiError(null);
       setAiExpanded(false);
+      setAiMessages([]);
+      setAiReady(false);
       onClose();
     } finally {
       setSubmitting(false);
@@ -159,16 +170,35 @@ export function AddCardDialog({
     await handleSubmit();
   };
 
-  const handleAiGenerate = async () => {
-    if (!aiInput.trim()) return;
-    setAiLoading(true);
+  const applyAiData = (d: Record<string, unknown>) => {
+    if (d.title) setTitle(d.title as string);
+    if (d.type) setType(d.type as CardType);
+    if (d.description) setDescription(d.description as string);
+    if (d.date) setDate(d.date as string);
+    if (d.start_time) setStartTime(d.start_time as string);
+    if (d.location) setLocation(d.location as string);
+    if (d.address) setAddress(d.address as string);
+    if (typeof d.budget === "number" && (d.budget as number) > 0) {
+      setExpenseItems([{ id: "ai-1", label: "Estimated cost", amount: d.budget as number, type: "communal" }]);
+    }
+  };
+
+  const handleAiSend = async () => {
+    if (!aiInput.trim() || aiLoading) return;
     setAiError(null);
+
+    const userMessage = { role: "user" as const, content: aiInput.trim() };
+    const newMessages = [...aiMessages, userMessage];
+    setAiMessages(newMessages);
+    setAiInput("");
+    setAiLoading(true);
+
     try {
       const res = await fetch("/api/cards/parse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          input: aiInput,
+          messages: newMessages,
           tripStartDate,
           tripEndDate,
           destination: tripDestination,
@@ -176,26 +206,27 @@ export function AddCardDialog({
       });
       const json = await res.json();
       if (!res.ok) {
-        setAiError(json.error || "Failed to parse input");
+        setAiError(json.error || "Failed to get AI response");
+        setAiMessages(aiMessages); // revert
         return;
       }
-      const d = json.data;
-      if (d.title) setTitle(d.title);
-      if (d.type) setType(d.type as CardType);
-      if (d.description) setDescription(d.description);
-      if (d.date) setDate(d.date);
-      if (d.start_time) setStartTime(d.start_time);
-      if (d.location) setLocation(d.location);
-      if (d.address) setAddress(d.address);
-      if (d.budget > 0) {
-        setExpenseItems([{ id: "ai-1", label: "Estimated cost", amount: d.budget, type: "communal" }]);
-      }
-      // Collapse AI panel after successful fill
-      setAiExpanded(false);
+
+      const assistantMessage = { role: "assistant" as const, content: json.message };
+      setAiMessages([...newMessages, assistantMessage]);
+      applyAiData(json.data);
+      setAiReady(json.ready === true);
     } catch {
       setAiError("Something went wrong. Please try again.");
+      setAiMessages(aiMessages); // revert
     } finally {
       setAiLoading(false);
+    }
+  };
+
+  const handleAiKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleAiSend();
     }
   };
 
@@ -229,40 +260,79 @@ export function AddCardDialog({
                   <ChevronDown className="h-4 w-4 opacity-60" />
                 )}
               </button>
+
               {aiExpanded && (
-                <div className="px-3 pb-3 space-y-2 border-t border-primary/10">
-                  <Textarea
-                    value={aiInput}
-                    onChange={(e) => setAiInput(e.target.value)}
-                    placeholder={`Describe what you want to do, or paste a link to an event, Google Maps place, or website...\n\nExamples:\n• "Dinner at a rooftop Italian restaurant Friday around 7pm, ~$60pp"\n• "https://maps.google.com/?q=Eiffel+Tower"\n• "Half-day cooking class, meets at 10am, includes lunch"`}
-                    rows={4}
-                    className="text-sm resize-none"
-                  />
-                  {aiError && (
-                    <p className="text-xs text-destructive">{aiError}</p>
+                <div className="border-t border-primary/10">
+                  {/* Chat messages */}
+                  {aiMessages.length > 0 && (
+                    <div ref={aiChatRef} className="px-3 pt-3 space-y-2 max-h-48 overflow-y-auto">
+                      {aiMessages.map((msg, i) => (
+                        <div
+                          key={i}
+                          className={`text-sm rounded-lg px-3 py-2 ${
+                            msg.role === "user"
+                              ? "bg-primary text-primary-foreground ml-6"
+                              : "bg-muted text-foreground mr-6"
+                          }`}
+                        >
+                          {msg.content}
+                        </div>
+                      ))}
+                      {aiLoading && (
+                        <div className="bg-muted text-muted-foreground text-sm rounded-lg px-3 py-2 mr-6 flex items-center gap-1.5">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Thinking...
+                        </div>
+                      )}
+                    </div>
                   )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={handleAiGenerate}
-                    disabled={aiLoading || !aiInput.trim()}
-                    className="w-full"
-                  >
-                    {aiLoading ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-                        Fill in details with AI
-                      </>
+
+                  {/* Ready banner */}
+                  {aiReady && (
+                    <div className="mx-3 mt-3 px-3 py-2 bg-green-50 border border-green-200 rounded-md text-xs text-green-800">
+                      Fields filled in below — review and edit before saving.
+                    </div>
+                  )}
+
+                  {/* Input area */}
+                  <div className="px-3 pb-3 pt-2 space-y-2">
+                    {aiError && (
+                      <p className="text-xs text-destructive">{aiError}</p>
                     )}
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    AI will pre-fill the fields below — review and edit before saving.
-                  </p>
+                    <div className="flex gap-2 items-end">
+                      <Textarea
+                        value={aiInput}
+                        onChange={(e) => setAiInput(e.target.value)}
+                        onKeyDown={handleAiKeyDown}
+                        placeholder={
+                          aiMessages.length === 0
+                            ? `Describe what you want to do, or paste a link...\n\nExamples: "Dinner at a rooftop Italian spot Friday ~7pm" or "https://maps.google.com/?q=Eiffel+Tower"`
+                            : "Reply to continue..."
+                        }
+                        rows={aiMessages.length === 0 ? 3 : 2}
+                        className="text-sm resize-none flex-1"
+                        disabled={aiLoading}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleAiSend}
+                        disabled={aiLoading || !aiInput.trim()}
+                        className="shrink-0"
+                      >
+                        {aiLoading ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    </div>
+                    {aiMessages.length === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        AI will ask follow-up questions and fill in the fields below. Press Enter to send.
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
