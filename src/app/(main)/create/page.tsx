@@ -28,6 +28,7 @@ export default function CreateTripPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [totalBudget, setTotalBudget] = useState("");
+  const [budgetType, setBudgetType] = useState<"total" | "per_person">("total");
   const [creatorEmail, setCreatorEmail] = useState("");
   const [creatorFirstName, setCreatorFirstName] = useState("");
   const [creatorLastName, setCreatorLastName] = useState("");
@@ -47,6 +48,7 @@ export default function CreateTripPage() {
           start_date: startDate,
           end_date: endDate,
           total_budget: parseFloat(totalBudget) || 0,
+          budget_type: budgetType,
           creator_email: creatorEmail,
         }),
       });
@@ -162,16 +164,50 @@ export default function CreateTripPage() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="budget">Estimated Total Budget ($)</Label>
+                  <Label>Budget Type</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBudgetType("total")}
+                      className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                        budgetType === "total"
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-input bg-background hover:bg-muted"
+                      }`}
+                    >
+                      Total Group Budget
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBudgetType("per_person")}
+                      className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                        budgetType === "per_person"
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-input bg-background hover:bg-muted"
+                      }`}
+                    >
+                      Per Person
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="budget">
+                    {budgetType === "total" ? "Estimated Total Budget ($)" : "Budget Per Person ($)"}
+                  </Label>
                   <Input
                     id="budget"
                     type="number"
                     value={totalBudget}
                     onChange={(e) => setTotalBudget(e.target.value)}
-                    placeholder="5000"
+                    placeholder={budgetType === "total" ? "5000" : "1000"}
                     min="0"
                     step="100"
                   />
+                  {budgetType === "per_person" && (
+                    <p className="text-xs text-muted-foreground">
+                      Total group budget will be calculated based on number of participants.
+                    </p>
+                  )}
                 </div>
               </div>
 

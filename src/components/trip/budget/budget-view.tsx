@@ -94,7 +94,14 @@ export function BudgetView({ trip, cards, participants }: BudgetViewProps) {
     [expenses]
   );
 
-  const totalBudget = Number(trip.total_budget) || 0;
+  const isPerPerson = trip.budget_type === "per_person";
+  const storedBudget = Number(trip.total_budget) || 0;
+  const totalBudget = isPerPerson
+    ? storedBudget * participants.length
+    : storedBudget;
+  const perPersonBudget = isPerPerson
+    ? storedBudget
+    : participants.length > 0 ? storedBudget / participants.length : 0;
   const percentSpent = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
   const perPerson = participants.length > 0 ? totalSpent / participants.length : 0;
 
@@ -237,7 +244,7 @@ export function BudgetView({ trip, cards, participants }: BudgetViewProps) {
               ${totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </span>
           </div>
-          {totalBudget > 0 && (
+          {storedBudget > 0 && (
             <>
               <div className="relative">
                 <Progress value={Math.min(percentSpent, 100)} className="h-3" />
@@ -249,6 +256,7 @@ export function BudgetView({ trip, cards, participants }: BudgetViewProps) {
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>
                   {percentSpent.toFixed(0)}% of ${totalBudget.toLocaleString()} budget
+                  {isPerPerson && ` (${participants.length} × $${storedBudget.toLocaleString()}/person)`}
                 </span>
                 <span>
                   ${Math.max(0, totalBudget - totalSpent).toLocaleString(undefined, { minimumFractionDigits: 2 })} remaining
@@ -260,10 +268,10 @@ export function BudgetView({ trip, cards, participants }: BudgetViewProps) {
           <div className="flex items-center justify-between text-sm">
             <span className="flex items-center gap-1 text-muted-foreground">
               <Users className="h-4 w-4" />
-              Per person average
+              Per person {storedBudget > 0 ? `(budget: $${perPersonBudget.toLocaleString(undefined, { maximumFractionDigits: 0 })})` : "average"}
             </span>
             <span className="font-medium">
-              ${perPerson.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              ${perPerson.toLocaleString(undefined, { minimumFractionDigits: 2 })} spent
             </span>
           </div>
         </CardContent>

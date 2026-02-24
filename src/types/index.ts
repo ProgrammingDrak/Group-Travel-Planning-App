@@ -18,6 +18,7 @@ export interface Trip {
   invite_code: string;
   is_template: boolean;
   total_budget: number;
+  budget_type: 'total' | 'per_person';
   created_at: string;
   updated_at: string;
 }

@@ -17,6 +17,7 @@ export const createTripSchema = z.object({
   end_date: z.string().min(1, "End date is required"),
   creator_email: z.string().email("Valid email is required"),
   total_budget: z.coerce.number().min(0).default(0),
+  budget_type: z.enum(["total", "per_person"]).default("total"),
 });
 
 export const updateTripSchema = createTripSchema.partial();

@@ -211,7 +211,7 @@ export function CardModal({
             </TabsTrigger>
           </TabsList>
 
-          <ScrollArea className="flex-1 max-h-[60vh]">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="px-6 py-4">
               <TabsContent value="details" className="mt-0">
                 <DetailsTab

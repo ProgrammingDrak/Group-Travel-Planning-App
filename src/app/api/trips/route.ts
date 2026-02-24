@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, destination, start_date, end_date, creator_email, total_budget } = parsed.data;
+    const { name, destination, start_date, end_date, creator_email, total_budget, budget_type } = parsed.data;
 
     const supabase = createServerSupabaseClient();
 
@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
           creator_email,
           invite_code,
           total_budget,
+          budget_type,
         })
         .select()
         .single();

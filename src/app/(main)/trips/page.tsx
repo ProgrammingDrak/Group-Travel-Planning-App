@@ -40,6 +40,7 @@ interface TripWithCount {
   start_date: string;
   end_date: string;
   total_budget: number;
+  budget_type: 'total' | 'per_person';
   participant_count: number;
   created_at: string;
 }
@@ -411,6 +412,7 @@ function TripCard({
                 <span className="flex items-center gap-1">
                   <DollarSign className="h-3 w-3" />
                   {Number(trip.total_budget).toLocaleString()}
+                  {trip.budget_type === "per_person" ? "/person" : " total"}
                 </span>
               )}
               <span className="flex items-center gap-1">
