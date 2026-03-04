@@ -38,6 +38,8 @@ export const createCardSchema = z.object({
   duration_minutes: z.coerce.number().min(0).default(60),
   location: z.string().max(200).default(""),
   address: z.string().max(500).default(""),
+  lat: z.number().nullable().default(null),
+  lng: z.number().nullable().default(null),
   budget: z.coerce.number().min(0).default(0),
   category: z.string().max(100).default(""),
   stage: z.enum(["idea", "hot_contender", "chosen", "booked"]).default("idea"),

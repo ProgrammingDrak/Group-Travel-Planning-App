@@ -98,13 +98,20 @@ const CARD_TYPES: { value: CardType; label: string; emoji: string }[] = [
   { value: "beach", label: "Beach", emoji: "🏖️" },
 ];
 
-// Rev 4: 5-tier voting system
+// Rev 4: 5-tier voting system (for non-idea stages)
 const VOTE_TIERS = [
   { score: 1, emoji: "👎", label: "Hard Stop", description: "Hard stop, will not attend", color: "bg-red-100 text-red-700 border-red-300 hover:bg-red-200" },
   { score: 2, emoji: "❌", label: "Not Interested", description: "Not interested in going", color: "bg-orange-100 text-orange-700 border-orange-300 hover:bg-orange-200" },
   { score: 3, emoji: "➖", label: "Tag Along", description: "Not participating but will tag along", color: "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200" },
   { score: 4, emoji: "✅", label: "I'm In", description: "Sign me up, I'm in!", color: "bg-green-100 text-green-700 border-green-300 hover:bg-green-200" },
   { score: 5, emoji: "🎉", label: "Must Do!", description: "This will make or break my trip!", color: "bg-purple-100 text-purple-700 border-purple-300 hover:bg-purple-200" },
+];
+
+// Simplified 3-tier voting for idea-stage cards
+const IDEA_VOTE_TIERS = [
+  { score: 1, emoji: "👎", label: "Not Interested", description: "Not interested in this activity", color: "bg-red-100 text-red-700 border-red-300 hover:bg-red-200" },
+  { score: 2, emoji: "💰", label: "Yes, If Price Is Right", description: "Interested but depends on the price", color: "bg-yellow-100 text-yellow-700 border-yellow-300 hover:bg-yellow-200" },
+  { score: 3, emoji: "✅", label: "Yes, No Matter What", description: "I'm in regardless of price", color: "bg-green-100 text-green-700 border-green-300 hover:bg-green-200" },
 ];
 
 const STAGE_OPTIONS: { value: CardStage; label: string; color: string }[] = [
@@ -337,6 +344,8 @@ function DetailsTab({ card, isOrganizer, onUpdate, onDelete, onClone, tripStartD
   const [durationMinutes, setDurationMinutes] = useState(card.duration_minutes);
   const [location, setLocation] = useState(card.location);
   const [address, setAddress] = useState(card.address);
+  const [cardLat, setCardLat] = useState<number | null>(card.lat);
+  const [cardLng, setCardLng] = useState<number | null>(card.lng);
   const [budget, setBudget] = useState(card.budget);
   const [category, setCategory] = useState(card.category);
   const [cardType, setCardType] = useState<CardType>(card.type);
@@ -374,6 +383,8 @@ function DetailsTab({ card, isOrganizer, onUpdate, onDelete, onClone, tripStartD
     setDurationMinutes(card.duration_minutes);
     setLocation(card.location);
     setAddress(card.address);
+    setCardLat(card.lat);
+    setCardLng(card.lng);
     setBudget(card.budget);
     setCategory(card.category);
     setCardType(card.type);
@@ -409,6 +420,8 @@ function DetailsTab({ card, isOrganizer, onUpdate, onDelete, onClone, tripStartD
         duration_minutes: durationMinutes,
         location,
         address,
+        lat: cardLat,
+        lng: cardLng,
         budget,
         category,
         type: cardType,
@@ -544,6 +557,8 @@ function DetailsTab({ card, isOrganizer, onUpdate, onDelete, onClone, tripStartD
             onSelect={(s) => {
               setLocation(s.name);
               setAddress(s.address);
+              setCardLat(s.lat);
+              setCardLng(s.lng);
             }}
             placeholder="Search for a location..."
           />
@@ -929,15 +944,16 @@ function VotingTab({
   }, [votes]);
 
   const totalParticipants = participants.length;
+  const activeTiers = card.stage === "idea" ? IDEA_VOTE_TIERS : VOTE_TIERS;
 
   return (
     <div className="space-y-6">
-      {/* Rev 4: 5-tier vote buttons */}
+      {/* Rev 4: vote buttons (3-tier for ideas, 5-tier otherwise) */}
       <div className="space-y-3">
         <Label className="text-base font-semibold">Cast Your Vote</Label>
         <TooltipProvider>
           <div className="flex items-center gap-2">
-            {VOTE_TIERS.map((tier) => (
+            {activeTiers.map((tier) => (
               <Tooltip key={tier.score}>
                 <TooltipTrigger asChild>
                   <Button
@@ -984,8 +1000,8 @@ function VotingTab({
             {votes.length}/{totalParticipants} voted
           </span>
         </div>
-        <div className="grid grid-cols-5 gap-2">
-          {VOTE_TIERS.map((tier) => (
+        <div className={`grid gap-2 ${activeTiers.length === 3 ? "grid-cols-3" : "grid-cols-5"}`}>
+          {activeTiers.map((tier) => (
             <div
               key={tier.score}
               className="flex flex-col items-center gap-1 rounded-lg border p-2"
@@ -1012,7 +1028,7 @@ function VotingTab({
         ) : (
           <div className="space-y-2">
             {votes.map((vote) => {
-              const tier = VOTE_TIERS.find((t) => t.score === vote.score);
+              const tier = activeTiers.find((t) => t.score === vote.score) ?? VOTE_TIERS.find((t) => t.score === vote.score);
               return (
                 <div
                   key={vote.id}

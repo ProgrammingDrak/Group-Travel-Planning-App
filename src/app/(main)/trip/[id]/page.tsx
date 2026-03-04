@@ -19,6 +19,7 @@ import { BudgetView } from "@/components/trip/budget/budget-view";
 import { RouteView } from "@/components/trip/route/route-view";
 import { ListView } from "@/components/trip/list/list-view";
 import { AccommodationsView } from "@/components/trip/accommodations/accommodations-view";
+import { PlannerView } from "@/components/planner/planner-view";
 import { CardModal } from "@/components/card/card-modal";
 import { AddCardDialog } from "@/components/card/add-card-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -53,6 +54,7 @@ import {
   Lock,
   ArrowRight,
   Plus,
+  LayoutGrid,
 } from "lucide-react";
 import type { CardWithVoteStats, Card, ParticipantSession, CardType } from "@/types";
 
@@ -93,7 +95,7 @@ export default function TripPage() {
   const [joining, setJoining] = useState(false);
 
   // UI state
-  const [activeTab, setActiveTab] = useState("timeline");
+  const [activeTab, setActiveTab] = useState("planner");
   const [selectedCard, setSelectedCard] = useState<CardWithVoteStats | null>(null);
   const [isCardModalOpen, setIsCardModalOpen] = useState(false);
   const [showAddCard, setShowAddCard] = useState(false);
@@ -157,9 +159,13 @@ export default function TripPage() {
       start_time: string | null;
       location: string;
       budget: number;
+      lat?: number | null;
+      lng?: number | null;
     }) => {
       await createCard({
         ...data,
+        lat: data.lat ?? null,
+        lng: data.lng ?? null,
         created_by: participant?.participant_id || null,
       });
     },
@@ -381,6 +387,10 @@ export default function TripPage() {
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <div className="flex items-center gap-2 mb-4">
               <TabsList>
+                <TabsTrigger value="planner" className="gap-1">
+                  <LayoutGrid className="h-4 w-4" />
+                  <span className="hidden sm:inline">Planner</span>
+                </TabsTrigger>
                 <TabsTrigger value="timeline" className="gap-1">
                   <Calendar className="h-4 w-4" />
                   <span className="hidden sm:inline">Timeline</span>
@@ -415,6 +425,18 @@ export default function TripPage() {
                 <span className="hidden sm:inline">Add Card</span>
               </Button>
             </div>
+
+            <TabsContent value="planner">
+              <PlannerView
+                trip={trip}
+                cards={cards}
+                participants={participants}
+                onCardClick={handleCardClick}
+                onReorderCards={reorderCards}
+                onCreateCard={createCard}
+                loading={cardsLoading}
+              />
+            </TabsContent>
 
             <TabsContent value="timeline">
               <TimelineView

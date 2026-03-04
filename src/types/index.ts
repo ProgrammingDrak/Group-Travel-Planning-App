@@ -44,6 +44,8 @@ export interface Card {
   duration_minutes: number;
   location: string;
   address: string;
+  lat: number | null;
+  lng: number | null;
   budget: number;
   category: string;
   stage: CardStage;

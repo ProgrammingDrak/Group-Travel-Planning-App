@@ -188,17 +188,26 @@ export function CardItem({
           </div>
         )}
 
-        {/* Stats row - Rev 4: Show vote tier counts */}
+        {/* Stats row - Vote tier counts (3-tier for ideas, 5-tier otherwise) */}
         <div className="flex items-center gap-2 mt-1.5 text-xs">
           {card.vote_count > 0 ? (
-            <span className="flex items-center gap-1.5">
-              <span className="text-muted-foreground">Votes:</span>
-              <span>👎{getVoteCountForScore(card, 1)}</span>
-              <span>❌{getVoteCountForScore(card, 2)}</span>
-              <span>➖{getVoteCountForScore(card, 3)}</span>
-              <span>✅{getVoteCountForScore(card, 4)}</span>
-              <span>🎉{getVoteCountForScore(card, 5)}</span>
-            </span>
+            card.stage === "idea" ? (
+              <span className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">Votes:</span>
+                <span>👎{getVoteCountForScore(card, 1)}</span>
+                <span>💰{getVoteCountForScore(card, 2)}</span>
+                <span>✅{getVoteCountForScore(card, 3)}</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">Votes:</span>
+                <span>👎{getVoteCountForScore(card, 1)}</span>
+                <span>❌{getVoteCountForScore(card, 2)}</span>
+                <span>➖{getVoteCountForScore(card, 3)}</span>
+                <span>✅{getVoteCountForScore(card, 4)}</span>
+                <span>🎉{getVoteCountForScore(card, 5)}</span>
+              </span>
+            )
           ) : (
             <span className="text-muted-foreground">
               {card.vote_count}/{totalParticipants} voted

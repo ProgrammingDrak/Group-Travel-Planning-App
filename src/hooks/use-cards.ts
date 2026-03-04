@@ -146,7 +146,7 @@ export function useCards({ tripId, stage, date, participantId }: UseCardsOptions
   );
 
   const reorderCards = useCallback(
-    async (reorderedCards: { id: string; sort_order: number; date?: string | null }[]) => {
+    async (reorderedCards: { id: string; sort_order: number; date?: string | null; start_time?: string | null }[]) => {
       // Optimistic update
       setCards((prev) => {
         const updated = [...prev];
@@ -157,6 +157,7 @@ export function useCards({ tripId, stage, date, participantId }: UseCardsOptions
               ...updated[idx],
               sort_order: rc.sort_order,
               ...(rc.date !== undefined ? { date: rc.date } : {}),
+              ...(rc.start_time !== undefined ? { start_time: rc.start_time } : {}),
             };
           }
         }
@@ -172,9 +173,12 @@ export function useCards({ tripId, stage, date, participantId }: UseCardsOptions
 
       // Persist
       for (const rc of reorderedCards) {
+        const updates: Record<string, unknown> = { sort_order: rc.sort_order };
+        if (rc.date !== undefined) updates.date = rc.date;
+        if (rc.start_time !== undefined) updates.start_time = rc.start_time;
         await supabase
           .from("cards")
-          .update({ sort_order: rc.sort_order, ...(rc.date !== undefined ? { date: rc.date } : {}) })
+          .update(updates)
           .eq("id", rc.id);
       }
     },

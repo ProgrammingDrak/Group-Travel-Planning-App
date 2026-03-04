@@ -15,7 +15,7 @@ interface LocationSuggestion {
 interface LocationAutocompleteProps {
   value: string;
   onChange: (value: string) => void;
-  onSelect?: (suggestion: { name: string; address: string }) => void;
+  onSelect?: (suggestion: { name: string; address: string; lat: number; lng: number }) => void;
   placeholder?: string;
   id?: string;
   className?: string;
@@ -106,6 +106,8 @@ export function LocationAutocomplete({
       onSelect({
         name: shortName,
         address: suggestion.display_name,
+        lat: parseFloat(suggestion.lat),
+        lng: parseFloat(suggestion.lon),
       });
     }
   };

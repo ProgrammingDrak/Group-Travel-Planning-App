@@ -37,6 +37,8 @@ interface AddCardDialogProps {
     start_time: string | null;
     location: string;
     budget: number;
+    lat: number | null;
+    lng: number | null;
   }) => Promise<void>;
   defaultDate?: string | null;
   tripId: string;
@@ -80,6 +82,8 @@ export function AddCardDialog({
   const [startTime, setStartTime] = useState("");
   const [location, setLocation] = useState("");
   const [address, setAddress] = useState("");
+  const [lat, setLat] = useState<number | null>(null);
+  const [lng, setLng] = useState<number | null>(null);
   const [expenseItems, setExpenseItems] = useState<ExpenseItem[]>([]);
   const [suggestedArrival, setSuggestedArrival] = useState(false);
   const [suggestedArrivalNotes, setSuggestedArrivalNotes] = useState("");
@@ -140,6 +144,8 @@ export function AddCardDialog({
         start_time: startTime || null,
         location: location + (address ? ` (${address})` : ""),
         budget: totalBudget,
+        lat,
+        lng,
       });
       // Reset form
       setTitle("");
@@ -149,6 +155,8 @@ export function AddCardDialog({
       setStartTime("");
       setLocation("");
       setAddress("");
+      setLat(null);
+      setLng(null);
       setExpenseItems([]);
       setSuggestedArrival(false);
       setSuggestedArrivalNotes("");
@@ -406,6 +414,8 @@ export function AddCardDialog({
                 onSelect={(s) => {
                   setLocation(s.name);
                   setAddress(s.address);
+                  setLat(s.lat);
+                  setLng(s.lng);
                 }}
                 placeholder="Search for a location..."
               />
