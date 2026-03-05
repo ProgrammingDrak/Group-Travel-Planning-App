@@ -54,11 +54,15 @@ import {
   ArrowRight,
   Plus,
 } from "lucide-react";
+import { useAuth } from "@/components/providers/auth-provider";
+import { PublishAdventureDialog } from "@/components/social/publish-adventure-dialog";
 import type { CardWithVoteStats, Card, ParticipantSession, CardType } from "@/types";
 
 export default function TripPage() {
   const params = useParams();
   const tripId = params.id as string;
+
+  const { user: authUser } = useAuth();
 
   // Trip and cards data
   const { trip, participants, loading: tripLoading, refetch: refetchTrip } = useTrip(tripId);
@@ -373,6 +377,9 @@ export default function TripPage() {
               <CalendarRange className="h-3 w-3 mr-1" />
               Move Dates
             </Button>
+            {authUser && (
+              <PublishAdventureDialog tripId={tripId} tripName={trip.name} />
+            )}
           </div>
         </div>
 

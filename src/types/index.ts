@@ -217,6 +217,75 @@ export interface SettlementStatus {
   is_settled: boolean;
 }
 
+// ---- Social Features ----
+
+export type AdventureVisibility = 'public' | 'followers' | 'private';
+
+export interface Profile {
+  id: string;
+  username: string;
+  display_name: string;
+  bio: string;
+  avatar_url: string;
+  created_at: string;
+  updated_at: string;
+  follower_count?: number;
+  following_count?: number;
+  is_following?: boolean;
+}
+
+export interface Follow {
+  id: string;
+  follower_id: string;
+  following_id: string;
+  created_at: string;
+  follower?: Profile;
+  following?: Profile;
+}
+
+export interface AdventurePost {
+  id: string;
+  profile_id: string;
+  trip_id: string;
+  caption: string;
+  cover_image_url: string;
+  visibility: AdventureVisibility;
+  published_at: string;
+  updated_at: string;
+  // Joined fields from view
+  author_username?: string;
+  author_display_name?: string;
+  author_avatar_url?: string;
+  trip_name?: string;
+  trip_destination?: string;
+  trip_start_date?: string;
+  trip_end_date?: string;
+  trip_budget?: number;
+  trip_budget_type?: 'total' | 'per_person';
+  like_count?: number;
+  tag_count?: number;
+  participant_count?: number;
+  // Client-side enrichment
+  is_liked?: boolean;
+  tags?: AdventureTag[];
+  profile?: Profile;
+  trip?: Trip;
+}
+
+export interface AdventureTag {
+  id: string;
+  adventure_post_id: string;
+  tagged_profile_id: string;
+  profile?: Profile;
+}
+
+export interface AdventureLike {
+  id: string;
+  adventure_post_id: string;
+  profile_id: string;
+  created_at: string;
+}
+
 // API response types
 export interface ApiResponse<T> {
   data: T | null;

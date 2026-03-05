@@ -128,6 +128,44 @@ export const createCommuteOptionSchema = z.object({
 
 export const updateCommuteOptionSchema = createCommuteOptionSchema.partial().omit({ segment_id: true });
 
+// ---- Social Features ----
+
+export const signupSchema = z.object({
+  email: z.string().email("Valid email is required"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  username: z.string().min(3, "Username must be at least 3 characters").max(30)
+    .regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores"),
+  display_name: z.string().min(1, "Display name is required").max(50),
+});
+
+export const loginSchema = z.object({
+  email: z.string().email("Valid email is required"),
+  password: z.string().min(1, "Password is required"),
+});
+
+export const updateProfileSchema = z.object({
+  display_name: z.string().min(1).max(50).optional(),
+  bio: z.string().max(500).optional(),
+  avatar_url: z.string().max(500).optional(),
+});
+
+export const createAdventurePostSchema = z.object({
+  trip_id: z.string().uuid(),
+  caption: z.string().max(2000).default(""),
+  cover_image_url: z.string().max(500).default(""),
+  visibility: z.enum(["public", "followers", "private"]).default("public"),
+  tagged_usernames: z.array(z.string()).optional(),
+});
+
+export const adventureTagSchema = z.object({
+  tagged_profile_id: z.string().uuid(),
+});
+
+export type SignupInput = z.infer<typeof signupSchema>;
+export type LoginInput = z.infer<typeof loginSchema>;
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+export type CreateAdventurePostInput = z.infer<typeof createAdventurePostSchema>;
+
 export type CreateTripInput = z.infer<typeof createTripSchema>;
 export type UpdateTripInput = z.infer<typeof updateTripSchema>;
 export type JoinTripInput = z.infer<typeof joinTripSchema>;
